@@ -19,3 +19,6 @@ export * from './utils';
 
 // Configuration
 export * from './config';
+
+// Adapters
+export * from './adapters';

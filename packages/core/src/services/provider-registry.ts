@@ -140,5 +140,20 @@ class ProviderRegistryImpl {
 // Singleton instance
 export const providerRegistry = new ProviderRegistryImpl();
 
+// Export class for instantiation
+export class ProviderRegistry extends ProviderRegistryImpl {
+    register<T extends keyof ProviderMap>(
+        type: T,
+        name: string,
+        provider: ProviderMap[T] extends Map<string, infer P> ? P : never,
+        setAsDefault = false
+    ): void {
+        if (type === 'ai') this.registerAI(name, provider as AIProvider, setAsDefault);
+        else if (type === 'scanner') this.registerScanner(name, provider as SecurityScanner, setAsDefault);
+        else if (type === 'filesystem') this.registerFilesystem(name, provider as FileSystem, setAsDefault);
+        else if (type === 'logger') this.registerLogger(name, provider as Logger, setAsDefault);
+    }
+}
+
 // Re-export for convenience
 export type { ProviderConfig };

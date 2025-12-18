@@ -96,5 +96,110 @@ describe('Result utility', () => {
                 expect(result.error.message).toBe('async error');
             }
         });
+
+        it('should handle non-Error rejections', async () => {
+            const result = await tryCatch(Promise.reject('string error'));
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.error).toBeInstanceOf(Error);
+                expect(result.error.message).toBe('string error');
+            }
+        });
+    });
+
+    describe('Edge Cases', () => {
+        it('should handle null values in Ok', () => {
+            const result = Ok(null);
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.value).toBe(null);
+            }
+        });
+
+        it('should handle undefined values in Ok', () => {
+            const result = Ok(undefined);
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.value).toBe(undefined);
+            }
+        });
+
+        it('should handle complex objects', () => {
+            const obj = { nested: { value: 42 } };
+            const result = Ok(obj);
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.value.nested.value).toBe(42);
+            }
+        });
+
+        it('should handle arrays', () => {
+            const arr = [1, 2, 3];
+            const result = Ok(arr);
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.value).toEqual([1, 2, 3]);
+            }
+        });
+    });
+
+    describe('Error Handling', () => {
+        it('should preserve error types', () => {
+            class CustomError extends Error {
+                constructor(message: string) {
+                    super(message);
+                    this.name = 'CustomError';
+                }
+            }
+            
+            const result = Err(new CustomError('custom'));
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.error).toBeInstanceOf(CustomError);
+                expect(result.error.name).toBe('CustomError');
+            }
+        });
+
+        it('should handle string errors', () => {
+            const result = Err('simple error');
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.error).toBe('simple error');
+            }
+        });
+    });
+
+    describe('Integration', () => {
+        it('should chain multiple operations', () => {
+            const result = mapResult(
+                mapResult(Ok(2), x => x * 2),
+                x => x + 1
+            );
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.value).toBe(5);
+            }
+        });
+
+        it('should short-circuit on first error', () => {
+            const result = mapResult(
+                mapResult(Err('error'), x => x * 2),
+                x => x + 1
+            );
+            expect(result.ok).toBe(false);
+        });
+
+        it('should work with async operations', async () => {
+            const fetchData = async (id: number) => {
+                if (id > 0) return id * 10;
+                throw new Error('Invalid ID');
+            };
+
+            const result1 = await tryCatch(fetchData(5));
+            expect(unwrapOr(result1, 0)).toBe(50);
+
+            const result2 = await tryCatch(fetchData(-1));
+            expect(unwrapOr(result2, 0)).toBe(0);
+        });
     });
 });

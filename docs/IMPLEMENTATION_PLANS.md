@@ -559,3 +559,160 @@ backbrain/
 ├── scripts/
 └── docs/
 ```
+
+
+---
+
+# Version 4: Phase 7 Complete + Vercel AI SDK
+
+> Updated: 2024-12-07 (After Phase 7 Implementation)
+
+## Implementation Status
+
+### ✅ Completed: Phase 7 - VS Code Extension Foundation
+- Extension package structure with commands
+- VS Code FileSystem adapter
+- Semgrep scanner adapter (traditional security)
+- Vibe-code scanner (AI hallucination detection)
+- SecurityService integration
+- All tests passing (16/16), 0 TypeScript errors
+
+### 🔄 Current: Phase 8 - Severity Panel & Enhanced Detection
+
+**New Requirement: Automated Dependency Management**
+- **Semgrep Auto-Install**: If `semgrep` is not found in the system PATH, the extension will attempt to install it automatically in the background using `pip` or by downloading a standalone binary. This ensures a "just works" experience for the user.
+
+**New Requirement: Vibe Rules Externalization**
+- **Configurable Rules**: Moving hardcoded regex rules from `VibeCodeScanner` to a dedicated configuration file. This allows for easier expansion and user customization in the future.
+
+### ⏳ Planned: Phase 9 - AI Integration & Augmented Scanning
+
+**New Requirement: AI-Augmented Scanning**
+- **AI Agent Audit**: Beyond static regex and Semgrep, an AI agent will be tasked with auditing the codebase for complex logic errors, security anti-patterns, and project-specific "vibe" issues that are hard to catch with traditional tools.
+- **Natural Language Rules**: Users can describe specific problems they want the AI to look for (e.g., "Make sure all database queries use the repository pattern").
+
+## Key Technology Decision: Vercel AI SDK
+
+**Decision Date:** 2024-12-07  
+**Rationale:** Unified interface for all 6 AI providers instead of managing individual SDKs
+
+**Benefits:**
+- One API for OpenAI, Claude, Gemini, Grok, Deepseek, Kimi
+- Built-in streaming, error handling, automatic retries
+- Type-safe with full TypeScript support
+- Token usage tracking (critical for freemium model)
+- Easy provider switching (one line of code)
+
+**Implementation:**
+```typescript
+// Unified interface via Vercel AI SDK
+import { generateText, streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { anthropic } from '@ai-sdk/anthropic';
+import { google } from '@ai-sdk/google';
+
+// Custom adapters for Grok, Deepseek, Kimi (OpenAI-compatible)
+```
+
+**Packages:**
+- `ai` - Core SDK
+- `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google` - Official providers
+- Custom adapters for remaining providers
+
+## Extensibility Architecture
+
+### Design for Future Features
+
+The port/adapter pattern ensures easy addition of new features:
+
+**Example 1: Context-Aware AI (Performance-Based Chunking)**
+```typescript
+// New service - no changes to existing code
+export class ContextManager {
+  async processWithOptimalContext(
+    content: string,
+    aiProvider: AIProvider
+  ): Promise<string> {
+    const chunks = this.splitByPerformanceThreshold(content);
+    const results: string[] = [];
+    
+    for (const chunk of chunks) {
+      const result = await aiProvider.complete(prompt, {
+        content: chunk,
+        // Previous context summary
+        systemPrompt: this.buildContextSummary(results),
+      });
+      results.push(result.content);
+    }
+    
+    return this.mergeResults(results);
+  }
+}
+
+// Register as new service - existing code unaffected
+registry.register('service', 'context-manager', new ContextManager());
+```
+
+**Example 2: AI Critique System (Small Model Reviews Large Model)**
+```typescript
+// New service using existing AIProvider port
+export class AICritiqueService {
+  constructor(
+    private largeModel: AIProvider,  // GPT-4
+    private smallModel: AIProvider   // GPT-3.5
+  ) {}
+  
+  async generateWithCritique(prompt: string): Promise<string> {
+    // Large model generates
+    const draft = await this.largeModel.complete(prompt, context);
+    
+    // Small model critiques
+    const critique = await this.smallModel.complete(
+      `Review this code for issues: ${draft.content}`,
+      context
+    );
+    
+    // Large model refines based on critique
+    const final = await this.largeModel.complete(
+      `Improve based on feedback: ${critique.content}`,
+      { ...context, content: draft.content }
+    );
+    
+    return final.content;
+  }
+}
+```
+
+### Adding New Features: Step-by-Step
+
+1. **Create new service** in `packages/core/src/services/`
+2. **Use existing ports** (AIProvider, SecurityScanner, etc.)
+3. **Register in registry** - no changes to existing code
+4. **Add command** in extension (if UI needed)
+5. **Write tests** in `tests/unit/` or `tests/integration/`
+
+**No refactoring required** - ports/adapters pattern isolates changes.
+
+## Updated Technology Stack
+
+### In Production (Phase 7)
+- Bun, TypeScript, VS Code Extension API
+- Semgrep (security), Vibe-code scanner (AI issues)
+
+### Phase 8-13 (MVP)
+- React, Vite, tree-sitter
+- **Vercel AI SDK** (unified AI interface) ⭐
+- puppeteer, Stripe, PostHog, Sentry
+
+### Phase 14-18 (Post-MVP)
+- React Flow, dagre, zustand
+- tiptap, framer-motion, Electron
+
+## Next Phases
+
+- **Phase 8:** Severity Panel (2 weeks) 🔄
+- **Phase 9:** AI Integration with Vercel SDK (2 weeks) ⏳
+- **Phase 10:** Auto-Fix & Revert (1 week) ⏳
+- **Phase 11:** Report Generation (1 week) ⏳
+- **Phase 12:** Testing & Polish (1 week) ⏳
+- **Phase 13:** MVP Launch (1 week) 🎯

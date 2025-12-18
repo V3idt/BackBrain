@@ -1,0 +1,63 @@
+{
+  "name": "@backbrain/extension",
+  "version": "0.1.0",
+  "private": true,
+  "displayName": "BackBrain",
+  "description": "AI-Powered Code Security & Quality Platform",
+  "publisher": "backbrain",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Testing"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "backbrain.scanFile",
+        "title": "BackBrain: Scan Current File"
+      },
+      {
+        "command": "backbrain.scanWorkspace",
+        "title": "BackBrain: Scan Workspace"
+      },
+      {
+        "command": "backbrain.showSecurityPanel",
+        "title": "BackBrain: Show Security Panel"
+      }
+    ],
+    "configuration": {
+      "title": "BackBrain",
+      "properties": {
+        "backbrain.scanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically scan files on save"
+        },
+        "backbrain.excludePaths": {
+          "type": "array",
+          "default": ["node_modules", "dist", "build", ".git"],
+          "description": "Paths to exclude from scanning"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "watch": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@backbrain/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "tsup": "^8.0.1"
+  }
+}

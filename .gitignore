@@ -1,34 +1,38 @@
-# dependencies (bun install)
-node_modules
+# 1. Ignore everything
+*
 
-# output
-out
-dist
-*.tgz
+# 2. Allow all directories to be traversed
+!*/
 
-# code coverage
-coverage
-*.lcov
+# 3. Whitelist root configuration and documentation
+!.gitignore
+!package.json
+!bun.lock
+!tsconfig.json
+!README.md
+!index.ts
 
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+# 4. Whitelist source code and assets
+!packages/**/*.ts
+!packages/**/*.json
+!packages/**/*.md
+!packages/**/*.png
+!packages/**/*.svg
+!tests/**/*.ts
+!scripts/**/*.ts
+!.agent/**/*.md
+!.agent/**/*.json
 
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
+# 5. Re-ignore specific directories and files that should NEVER be tracked
+node_modules/
+dist/
+out/
+coverage/
+.env*
+.idea/
+.DS_Store
 *.tsbuildinfo
 
-# IntelliJ based IDEs
-.idea
+# 6. Whitelist documentation
+!docs/**/IMPLEMENTATION_PLANS.md
 
-# Finder (MacOS) folder config
-.DS_Store

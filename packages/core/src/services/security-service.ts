@@ -2,6 +2,7 @@ import { SEVERITY_ORDER } from '../ports';
 import type { SecurityScanner, SecurityIssue, Severity } from '../ports';
 import type { CodeIssue, CodeFix, CodeLocation, IssueCategory, IssueSeverity } from '../types';
 import { getLogger } from '../utils/logger';
+import { toError } from '../utils/result';
 import { providerRegistry } from './provider-registry';
 
 export interface SecurityScanOptions {
@@ -121,7 +122,7 @@ export async function runSecurityScan(
 
             logger.debug(`Scanner ${scanner.name} found ${result.issues.length} issues`);
         } catch (error) {
-            logger.error(`Scanner ${scanner.name} failed`, { error: String(error) });
+            logger.error(`Scanner ${scanner.name} failed`, { error: toError(error) });
         }
     }
 
@@ -164,4 +165,36 @@ export async function scanFile(
 
     const issues = await scanner.scanFile(filePath, content);
     return issues.map(toCodeIssue);
+}
+
+/**
+ * SecurityService class for dependency injection
+ */
+export class SecurityService {
+    constructor(private scanners: SecurityScanner[]) {
+        // Register all scanners
+        scanners.forEach(scanner => {
+            providerRegistry.registerScanner(scanner.name, scanner);
+        });
+    }
+
+    async scanFile(filePath: string, content: string): Promise<SecurityScanResult> {
+        const issues: CodeIssue[] = [];
+
+        for (const scanner of this.scanners) {
+            const scannerIssues = await scanner.scanFile(filePath, content);
+            issues.push(...scannerIssues.map(toCodeIssue));
+        }
+
+        return {
+            issues,
+            scannedFiles: [filePath],
+            scanDurationMs: 0,
+            scannersUsed: this.scanners.map(s => s.name),
+        };
+    }
+
+    async scan(paths: string[], options?: SecurityScanOptions): Promise<SecurityScanResult> {
+        return runSecurityScan(paths, options);
+    }
 }

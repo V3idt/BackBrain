@@ -70,6 +70,14 @@ export function mapResult<T, U, E>(
 }
 
 /**
+ * Normalize any value into an Error object
+ */
+export function toError(error: unknown): Error {
+    if (error instanceof Error) return error;
+    return new Error(String(error));
+}
+
+/**
  * Wrap a promise to return a Result
  */
 export async function tryCatch<T>(
@@ -79,6 +87,6 @@ export async function tryCatch<T>(
         const value = await promise;
         return Ok(value);
     } catch (error) {
-        return Err(error instanceof Error ? error : new Error(String(error)));
+        return Err(toError(error));
     }
 }

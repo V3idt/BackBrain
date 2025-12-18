@@ -7,7 +7,7 @@
 import type { FileSystem } from '../ports';
 import type { CodeIssue, CodeFix, FixResult, FixSummary } from '../types';
 import { getLogger } from '../utils/logger';
-import { Ok, Err, type Result } from '../utils/result';
+import { Ok, Err, toError, type Result } from '../utils/result';
 import { providerRegistry } from './provider-registry';
 
 export interface AutoFixOptions {
@@ -107,7 +107,7 @@ async function applyFixesToFile(
     try {
         content = await fs.readFile(filePath);
     } catch (error) {
-        logger.error(`Failed to read file: ${filePath}`, { error: String(error) });
+        logger.error(`Failed to read file: ${filePath}`, { error: toError(error) });
         return issues.map(issue => ({
             issue,
             applied: false,
@@ -179,7 +179,7 @@ async function applyFixesToFile(
             await fs.writeFile(filePath, content);
             logger.info(`Updated file: ${filePath}`);
         } catch (error) {
-            logger.error(`Failed to write file: ${filePath}`, { error: String(error) });
+            logger.error(`Failed to write file: ${filePath}`, { error: toError(error) });
             // Mark all fixes as failed
             return results.map(r => ({
                 ...r,
@@ -271,7 +271,7 @@ export async function revertFixes(sessionId: string): Promise<Result<number, str
             reverted++;
             logger.debug(`Reverted: ${change.filePath}`);
         } catch (error) {
-            logger.error(`Failed to revert: ${change.filePath}`, { error: String(error) });
+            logger.error(`Failed to revert: ${change.filePath}`, { error: toError(error) });
         }
     }
 

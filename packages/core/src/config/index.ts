@@ -4,6 +4,8 @@
  * Environment-based configuration with debug mode support.
  */
 
+import { getEnvVar } from './branding';
+
 export interface BackBrainConfig {
     /** Enable debug mode */
     debug: boolean;
@@ -35,8 +37,8 @@ export interface BackBrainConfig {
 
 /** Default configuration */
 export const defaultConfig: BackBrainConfig = {
-    debug: process.env.BACKBRAIN_DEBUG === 'true',
-    verboseLogging: process.env.BACKBRAIN_VERBOSE === 'true',
+    debug: getEnvVar('DEBUG') === 'true',
+    verboseLogging: getEnvVar('VERBOSE') === 'true',
     aiBackend: 'backbrain',
     security: {
         enabled: true,
@@ -66,3 +68,5 @@ export function getConfig(userConfig: Partial<BackBrainConfig> = {}): BackBrainC
         },
     };
 }
+
+export * from './branding';
