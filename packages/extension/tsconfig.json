@@ -3,10 +3,12 @@
   "compilerOptions": {
     "outDir": "./dist",
     "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "strict": true,
+    "skipLibCheck": true,
     "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
+      "ES2022"
     ]
   },
   "include": [
@@ -14,6 +16,7 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/webview"
   ]
 }

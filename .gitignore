@@ -13,15 +13,14 @@
 !index.ts
 
 # 4. Whitelist source code and assets
-!packages/**/*.ts
+!packages/**/*
 !packages/**/*.json
 !packages/**/*.md
 !packages/**/*.png
 !packages/**/*.svg
-!tests/**/*.ts
-!scripts/**/*.ts
-!.agent/**/*.md
-!.agent/**/*.json
+!tests/**/*
+!scripts/**/*
+!.agent/**/*
 
 # 5. Re-ignore specific directories and files that should NEVER be tracked
 node_modules/
@@ -35,4 +34,6 @@ coverage/
 
 # 6. Whitelist documentation
 !docs/**/IMPLEMENTATION_PLANS.md
+!docs/**/ROADMAP.md
+
 

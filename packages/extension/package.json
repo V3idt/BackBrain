@@ -42,22 +42,47 @@
         },
         "backbrain.excludePaths": {
           "type": "array",
-          "default": ["node_modules", "dist", "build", ".git"],
+          "default": [
+            "node_modules",
+            "dist",
+            "build",
+            ".git"
+          ],
           "description": "Paths to exclude from scanning"
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "backbrain-sidebar",
+          "title": "BackBrain",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "backbrain-sidebar": [
+        {
+          "type": "webview",
+          "id": "backbrain.severityPanel",
+          "name": "Security Issues"
+        }
+      ]
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && bun run build:webview",
+    "build:webview": "vite build",
     "watch": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p src/webview/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@backbrain/core": "workspace:*"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
     "tsup": "^8.0.1"
   }
 }

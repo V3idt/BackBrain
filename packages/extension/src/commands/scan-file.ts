@@ -22,11 +22,11 @@ export async function scanFileCommand(ctx: CommandContext) {
   try {
     const content = await ctx.fileSystem.readFile(filePath);
     const result = await ctx.securityService.scanFile(filePath, content);
-    
+
     const critical = result.issues.filter((i: CodeIssue) => i.severity === 'critical').length;
     const high = result.issues.filter((i: CodeIssue) => i.severity === 'high').length;
     const total = result.issues.length;
-    
+
     if (total === 0) {
       vscode.window.showInformationMessage('✓ No issues found');
     } else {
@@ -34,7 +34,7 @@ export async function scanFileCommand(ctx: CommandContext) {
         `Found ${total} issue(s): ${critical} critical, ${high} high`
       );
     }
-    
+
     logger.info('Scan complete', { total, critical, high });
   } catch (error) {
     logger.error('Scan failed', { error });
