@@ -1,0 +1,61 @@
+.issue-item {
+    padding: var(--bb-spacing-lg);
+    margin-bottom: var(--bb-spacing-sm);
+    border-radius: var(--bb-border-radius-md);
+    background-color: var(--bb-color-background-hover);
+    cursor: pointer;
+    transition: background-color var(--bb-transition-normal);
+    border-left: 3px solid var(--severity-color, var(--bb-severity-info));
+}
+
+.issue-item:hover {
+    background-color: var(--bb-color-background-active);
+}
+
+.issue-item-header {
+    display: flex;
+    align-items: center;
+    gap: var(--bb-spacing-md);
+    margin-bottom: var(--bb-spacing-xs);
+}
+
+.severity-badge {
+    font-size: var(--bb-font-size-xs);
+    font-weight: var(--bb-font-weight-semibold);
+    text-transform: uppercase;
+    padding: 2px var(--bb-spacing-sm);
+    border-radius: var(--bb-border-radius-sm);
+    color: var(--severity-color, var(--bb-severity-info));
+    background-color: var(--severity-bg, var(--bb-severity-info-bg));
+}
+
+.issue-title {
+    font-weight: var(--bb-font-weight-medium);
+    color: var(--bb-color-foreground);
+}
+
+.issue-description {
+    font-size: var(--bb-font-size-sm);
+    color: var(--bb-color-foreground-muted);
+    margin-bottom: var(--bb-spacing-sm);
+}
+
+.issue-location {
+    font-size: var(--bb-font-size-sm);
+    color: var(--bb-color-link);
+    display: flex;
+    align-items: center;
+}
+
+.issue-snippet {
+    margin-top: var(--bb-spacing-md);
+    padding: var(--bb-spacing-sm) var(--bb-spacing-md);
+    font-size: var(--bb-font-size-sm);
+    font-family: var(--bb-font-family-mono);
+    background-color: var(--bb-color-background-secondary);
+    border-radius: var(--bb-border-radius-sm);
+    max-height: 200px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}

@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
-import { createLogger } from '@backbrain/core';
+import { createLogger, type SecurityService, type CodeIssue } from '@backbrain/core';
+import type { WebviewMessage, IssueData } from '../webview/messages';
+
+const logger = createLogger('SeverityPanel');
 
 export class SeverityPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'backbrain.severityPanel';
+    private _view?: vscode.WebviewView;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
+        private readonly _securityService: SecurityService,
     ) { }
 
     public async resolveWebviewView(
@@ -13,6 +18,8 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ) {
+        this._view = webviewView;
+
         webviewView.webview.options = {
             // Allow scripts in the webview
             enableScripts: true,
@@ -26,7 +33,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         try {
             webviewView.webview.html = await this._getHtmlForWebview(webviewView.webview);
         } catch (error) {
-            createLogger('SeverityPanel').error('Failed to load webview HTML', { error });
+            logger.error('Failed to load webview HTML', { error });
             webviewView.webview.html = `<!DOCTYPE html><html><body>
                 <h3>Error loading BackBrain UI</h3>
                 <p>Please ensure the extension is built correctly.</p>
@@ -35,18 +42,117 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         }
 
         // Handle messages from the webview
-        webviewView.webview.onDidReceiveMessage(data => {
-            switch (data.type) {
-                case 'onInfo': {
-                    vscode.window.showInformationMessage(data.value);
+        webviewView.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
+            switch (message.type) {
+                case 'ready':
+                    logger.debug('Webview is ready');
                     break;
-                }
-                case 'onError': {
-                    vscode.window.showErrorMessage(data.value);
+
+                case 'requestScan':
+                    await this._handleScanRequest();
                     break;
-                }
+
+                case 'navigateToIssue':
+                    await this._handleNavigateToIssue(message.filePath, message.line, message.column);
+                    break;
             }
         });
+    }
+
+    /**
+     * Handle scan request from webview
+     */
+    private async _handleScanRequest(): Promise<void> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            this._postMessage({ type: 'scanError', error: 'No workspace folder open' });
+            return;
+        }
+
+        // Notify webview that scan is starting
+        this._postMessage({ type: 'scanStarted' });
+        logger.info('Starting workspace scan...');
+
+        try {
+            // Find files to scan (TypeScript/JavaScript for now)
+            const files = await vscode.workspace.findFiles(
+                '**/*.{ts,tsx,js,jsx,py}',
+                '**/node_modules/**',
+                500 // Limit to 500 files
+            );
+
+            const filePaths = files.map(f => f.fsPath);
+            logger.debug(`Found ${filePaths.length} files to scan`);
+
+            // Run the scan
+            const result = await this._securityService.scan(filePaths);
+
+            // Convert to IssueData for the webview
+            const issueData: IssueData[] = result.issues.map(issue => this._toIssueData(issue));
+
+            logger.info(`Scan complete: ${issueData.length} issues found`);
+            this._postMessage({ type: 'scanComplete', issues: issueData });
+
+        } catch (error) {
+            logger.error('Scan failed', { error });
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this._postMessage({ type: 'scanError', error: errorMessage });
+        }
+    }
+
+    /**
+     * Navigate to issue location in editor
+     */
+    private async _handleNavigateToIssue(filePath: string, line: number, column?: number): Promise<void> {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document, { preserveFocus: true });
+
+            // Create position (VS Code is 0-indexed, our data is 1-indexed)
+            const position = new vscode.Position(Math.max(0, line - 1), Math.max(0, (column || 1) - 1));
+
+            // Move cursor and reveal
+            editor.selection = new vscode.Selection(position, position);
+            editor.revealRange(
+                new vscode.Range(position, position),
+                vscode.TextEditorRevealType.InCenter
+            );
+
+            logger.debug('Navigated to issue', { filePath, line, column });
+        } catch (error) {
+            logger.error('Failed to navigate to issue', { error, filePath, line });
+            vscode.window.showErrorMessage(`Could not open file: ${filePath}`);
+        }
+    }
+
+    /**
+     * Convert CodeIssue to IssueData for the webview
+     */
+    private _toIssueData(issue: CodeIssue): IssueData {
+        const data: IssueData = {
+            id: issue.id,
+            title: issue.title,
+            description: issue.description,
+            severity: issue.severity,
+            filePath: issue.location.filePath,
+            line: issue.location.line,
+            category: issue.category,
+        };
+        // Only include column if defined (exactOptionalPropertyTypes)
+        if (issue.location.column !== undefined) {
+            data.column = issue.location.column;
+        }
+        return data;
+    }
+
+    /**
+     * Post message to webview
+     */
+    private _postMessage(message: { type: string;[key: string]: unknown }): void {
+        if (this._view) {
+            this._view.webview.postMessage(message);
+        }
     }
 
     private async _getHtmlForWebview(webview: vscode.Webview): Promise<string> {

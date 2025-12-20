@@ -201,6 +201,7 @@
 - [ ] Add dead code detector
 - [ ] Implement workspace scanning
 - [ ] Add scan progress indicator
+- [ ] **Performance Optimization**: Implement virtualization (e.g., React Window) for large issue lists
 
 #### New Technologies:
 - **React** (18+) - UI framework for webview

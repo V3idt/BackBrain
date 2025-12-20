@@ -1,0 +1,108 @@
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.issue-list {
+    animation: fadeIn var(--bb-transition-normal) ease-out;
+}
+
+.issue-list-loading,
+.issue-list-empty {
+    text-align: center;
+    padding: var(--bb-spacing-xxl) var(--bb-spacing-xl);
+    color: var(--bb-color-foreground-muted);
+}
+
+.issue-list-loading vscode-progress-ring {
+    display: block;
+    margin: 0 auto;
+}
+
+.issue-list-loading-text {
+    margin-top: var(--bb-spacing-lg);
+}
+
+.issue-list-empty-title {
+    margin-bottom: var(--bb-spacing-lg);
+    font-size: var(--bb-font-size-md);
+    font-weight: var(--bb-font-weight-medium);
+    color: var(--bb-color-success);
+}
+
+.issue-list-empty-subtitle {
+    font-size: var(--bb-font-size-sm);
+    margin-top: var(--bb-spacing-md);
+    opacity: 0.8;
+}
+
+.issue-list-controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--bb-spacing-md);
+    margin-bottom: var(--bb-spacing-lg);
+    padding-bottom: var(--bb-spacing-sm);
+    border-bottom: 1px solid var(--bb-color-border);
+    flex-wrap: wrap;
+}
+
+.issue-list-controls label {
+    font-size: var(--bb-font-size-xs);
+    color: var(--bb-color-foreground-muted);
+    text-transform: uppercase;
+    font-weight: var(--bb-font-weight-semibold);
+}
+
+.issue-list-sort-select {
+    background-color: var(--bb-color-background-secondary);
+    color: var(--bb-color-foreground);
+    border: 1px solid var(--bb-color-border);
+    border-radius: var(--bb-border-radius-sm);
+    padding: 2px var(--bb-spacing-sm);
+    font-size: var(--bb-font-size-sm);
+    outline: none;
+    cursor: pointer;
+}
+
+.issue-list-sort-select:focus {
+    border-color: var(--bb-color-border-active);
+}
+
+.file-group {
+    margin-bottom: var(--bb-spacing-xl);
+}
+
+.file-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--vscode-editor-background, var(--bb-color-background));
+    font-size: var(--bb-font-size-sm);
+    font-weight: var(--bb-font-weight-semibold);
+    color: var(--bb-color-foreground);
+    padding: var(--bb-spacing-sm) 0;
+    margin-bottom: var(--bb-spacing-sm);
+    border-bottom: 1px solid var(--bb-color-border);
+    display: flex;
+    align-items: center;
+    gap: var(--bb-spacing-sm);
+    flex-wrap: wrap;
+}
+
+.file-badge {
+    margin-left: auto;
+    opacity: 0.7;
+    background-color: var(--bb-color-badge-bg);
+    color: var(--bb-color-badge-fg);
+    padding: 1px var(--bb-spacing-sm);
+    border-radius: var(--bb-border-radius-pill);
+    font-size: var(--bb-font-size-xs);
+}

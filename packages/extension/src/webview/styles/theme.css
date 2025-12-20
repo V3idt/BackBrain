@@ -1,0 +1,125 @@
+:root {
+    /* ============================================================
+     * Typography - normalize across editors
+     * ============================================================ */
+    --bb-font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif);
+    --bb-font-family-mono: var(--vscode-editor-font-family, 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace);
+
+    --bb-font-size-xs: 10px;
+    --bb-font-size-sm: 11px;
+    --bb-font-size-base: 13px;
+    --bb-font-size-md: 14px;
+    --bb-font-size-lg: 16px;
+
+    --bb-font-weight-normal: 400;
+    --bb-font-weight-medium: 500;
+    --bb-font-weight-semibold: 600;
+
+    --bb-line-height: 1.4;
+
+    /* ============================================================
+     * Spacing - consistent across editors
+     * ============================================================ */
+    --bb-spacing-xs: 4px;
+    --bb-spacing-sm: 6px;
+    --bb-spacing-md: 8px;
+    --bb-spacing-lg: 12px;
+    --bb-spacing-xl: 16px;
+    --bb-spacing-xxl: 24px;
+
+    --bb-border-radius-sm: 3px;
+    --bb-border-radius-md: 4px;
+    --bb-border-radius-lg: 6px;
+    --bb-border-radius-pill: 12px;
+
+    /* ============================================================
+     * Animation
+     * ============================================================ */
+    --bb-transition-fast: 0.1s ease;
+    --bb-transition-normal: 0.15s ease;
+    --bb-transition-slow: 0.25s ease;
+}
+
+/* ============================================================
+ * Mode-Specific Fallbacks (Dark Mode - Default)
+ * ============================================================ */
+body,
+.vscode-dark {
+    --bb-color-foreground: var(--vscode-foreground, #cccccc);
+    --bb-color-foreground-muted: var(--vscode-descriptionForeground, #9d9d9d);
+    --bb-color-background: var(--vscode-editor-background, #1e1e1e);
+    --bb-color-background-hover: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+    --bb-color-background-active: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.1));
+    --bb-color-background-secondary: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
+    --bb-color-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    --bb-color-border-active: var(--vscode-focusBorder, #007fd4);
+    --bb-color-link: var(--vscode-textLink-foreground, #3794ff);
+    --bb-color-badge-bg: var(--vscode-badge-background, #4d4d4d);
+    --bb-color-badge-fg: var(--vscode-badge-foreground, #ffffff);
+
+    /* Severity colors - Dark Mode */
+    --bb-severity-critical: var(--vscode-testing-iconFailed, #f14c4c);
+    --bb-severity-critical-bg: rgba(241, 76, 76, 0.2);
+    --bb-severity-high: var(--vscode-editorError-foreground, #f48771);
+    --bb-severity-high-bg: rgba(244, 135, 113, 0.15);
+    --bb-severity-medium: var(--vscode-editorWarning-foreground, #cca700);
+    --bb-severity-medium-bg: rgba(204, 167, 0, 0.15);
+    --bb-severity-low: var(--vscode-editorInfo-foreground, #3794ff);
+    --bb-severity-low-bg: rgba(55, 148, 255, 0.15);
+    --bb-severity-info: var(--vscode-descriptionForeground, #9d9d9d);
+    --bb-severity-info-bg: rgba(157, 157, 157, 0.12);
+
+    --bb-color-success: var(--vscode-testing-iconPassed, #73c991);
+    --bb-color-error: var(--vscode-errorForeground, #f14c4c);
+    --bb-color-error-bg: rgba(241, 76, 76, 0.15);
+}
+
+/* ============================================================
+ * Mode-Specific Fallbacks (Light Mode)
+ * ============================================================ */
+.vscode-light {
+    --bb-color-foreground: var(--vscode-foreground, #333333);
+    --bb-color-foreground-muted: var(--vscode-descriptionForeground, #717171);
+    --bb-color-background: var(--vscode-editor-background, #ffffff);
+    --bb-color-background-hover: var(--vscode-list-hoverBackground, rgba(0, 0, 0, 0.05));
+    --bb-color-background-active: var(--vscode-list-activeSelectionBackground, rgba(0, 0, 0, 0.1));
+    --bb-color-background-secondary: var(--vscode-textBlockQuote-background, rgba(0, 0, 0, 0.05));
+    --bb-color-border: var(--vscode-panel-border, rgba(0, 0, 0, 0.15));
+    --bb-color-border-active: var(--vscode-focusBorder, #007acc);
+    --bb-color-link: var(--vscode-textLink-foreground, #0066cc);
+    --bb-color-badge-bg: var(--vscode-badge-background, #c4c4c4);
+    --bb-color-badge-fg: var(--vscode-badge-foreground, #333333);
+
+    /* Severity colors - Light Mode (High Contrast for WCAG) */
+    --bb-severity-critical: var(--vscode-testing-iconFailed, #cd3131);
+    --bb-severity-critical-bg: rgba(205, 49, 49, 0.12);
+    --bb-severity-high: var(--vscode-editorError-foreground, #e51400);
+    --bb-severity-high-bg: rgba(229, 20, 0, 0.1);
+    --bb-severity-medium: var(--vscode-editorWarning-foreground, #bf8800);
+    --bb-severity-medium-bg: rgba(191, 136, 0, 0.1);
+    --bb-severity-low: var(--vscode-editorInfo-foreground, #1a85ff);
+    --bb-severity-low-bg: rgba(26, 133, 255, 0.1);
+    --bb-severity-info: var(--vscode-descriptionForeground, #717171);
+    --bb-severity-info-bg: rgba(113, 113, 113, 0.08);
+
+    --bb-color-success: var(--vscode-testing-iconPassed, #388a34);
+    --bb-color-error: var(--vscode-errorForeground, #cd3131);
+    --bb-color-error-bg: rgba(205, 49, 49, 0.1);
+}
+
+/* ============================================================
+ * Base styles for webview
+ * ============================================================ */
+body {
+    font-family: var(--bb-font-family);
+    font-size: var(--bb-font-size-base);
+    line-height: var(--bb-line-height);
+    color: var(--bb-color-foreground);
+    background-color: var(--bb-color-background);
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    padding: var(--bb-spacing-xl);
+}

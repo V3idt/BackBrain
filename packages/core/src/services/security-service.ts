@@ -39,8 +39,14 @@ function toCodeIssue(issue: SecurityIssue): CodeIssue {
         autoFixable: issue.suggestedFix.autoFixable,
     } : undefined;
 
+    // Generate a stable ID based on content and location
+    // We use a simple string concatenation for now, but including the description
+    // makes it much more stable than just line number.
+    const contentHash = issue.description.substring(0, 10).replace(/\s+/g, '_');
+    const id = `sec-${issue.ruleId}-${issue.filePath}-${issue.line}-${contentHash}`;
+
     const result: CodeIssue = {
-        id: `security-${issue.ruleId}-${issue.line}`,
+        id,
         type: 'security_vulnerability',
         title: issue.title,
         description: issue.description,

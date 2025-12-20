@@ -20,22 +20,28 @@ export async function scanFileCommand(ctx: CommandContext) {
   logger.info('Scanning file', { filePath });
 
   try {
-    const content = await ctx.fileSystem.readFile(filePath);
-    const result = await ctx.securityService.scanFile(filePath, content);
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "BackBrain: Scanning file...",
+      cancellable: false
+    }, async (progress) => {
+      const content = await ctx.fileSystem.readFile(filePath);
+      const result = await ctx.securityService.scanFile(filePath, content);
 
-    const critical = result.issues.filter((i: CodeIssue) => i.severity === 'critical').length;
-    const high = result.issues.filter((i: CodeIssue) => i.severity === 'high').length;
-    const total = result.issues.length;
+      const critical = result.issues.filter((i: CodeIssue) => i.severity === 'critical').length;
+      const high = result.issues.filter((i: CodeIssue) => i.severity === 'high').length;
+      const total = result.issues.length;
 
-    if (total === 0) {
-      vscode.window.showInformationMessage('✓ No issues found');
-    } else {
-      vscode.window.showWarningMessage(
-        `Found ${total} issue(s): ${critical} critical, ${high} high`
-      );
-    }
+      if (total === 0) {
+        vscode.window.showInformationMessage('No issues found');
+      } else {
+        vscode.window.showWarningMessage(
+          `Found ${total} issue(s): ${critical} critical, ${high} high`
+        );
+      }
 
-    logger.info('Scan complete', { total, critical, high });
+      logger.info('Scan complete', { total, critical, high });
+    });
   } catch (error) {
     logger.error('Scan failed', { error });
     vscode.window.showErrorMessage(`Scan failed: ${error}`);
