@@ -3,9 +3,8 @@ import { toError } from '../utils/result';
 import { createLogger } from '../utils/logger';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import * as path from 'path';
-import * as os from 'os';
-import * as fs from 'fs/promises';
+
+const execAsync = promisify(exec);
 
 
 const logger = createLogger('SemgrepScanner');
@@ -28,65 +27,27 @@ interface SemgrepFinding {
 }
 
 export class SemgrepScanner implements SecurityScanner {
-  private isInstalling = false;
   private execFn: typeof exec;
-  private venvPath: string;
+  private binaryPath: string = 'semgrep'; // Default to system path
   readonly name = 'semgrep';
 
-  constructor(execFn?: typeof exec) {
+  constructor(execFn?: typeof exec, binaryPath?: string) {
     this.execFn = execFn || exec;
-    this.venvPath = path.join(os.homedir(), '.backbrain', 'semgrep-venv');
+    if (binaryPath) {
+      this.binaryPath = binaryPath;
+    }
   }
 
-  private async getSemgrepPath(): Promise<string> {
-    // 1. Try system semgrep
-    try {
-      await promisify(this.execFn)('semgrep --version');
-      return 'semgrep';
-    } catch {
-      // 2. Try venv semgrep
-      const venvBinary = path.join(this.venvPath, 'bin', 'semgrep');
-      try {
-        await fs.access(venvBinary);
-        return venvBinary;
-      } catch {
-        return '';
-      }
-    }
+  setBinaryPath(path: string) {
+    this.binaryPath = path;
   }
 
   async isAvailable(): Promise<boolean> {
-    const semgrepPath = await this.getSemgrepPath();
-    if (semgrepPath) return true;
-
-    if (!this.isInstalling) {
-      this.installSemgrep().catch(error => {
-        logger.error('Background installation failed', { error: toError(error) });
-      });
-    }
-    return false;
-  }
-
-  private async installSemgrep(): Promise<void> {
-    this.isInstalling = true;
-    logger.info('Semgrep not found. Attempting background installation in private venv...', { venvPath: this.venvPath });
-
     try {
-      // Ensure parent directory exists
-      await fs.mkdir(path.dirname(this.venvPath), { recursive: true });
-
-      // Create venv
-      await promisify(this.execFn)(`python3 -m venv ${this.venvPath}`);
-
-      // Install semgrep in venv
-      const pipPath = path.join(this.venvPath, 'bin', 'pip');
-      await promisify(this.execFn)(`${pipPath} install semgrep`);
-
-      logger.info('Semgrep installed successfully in private venv');
-    } catch (error) {
-      logger.error('Failed to install Semgrep automatically.', { error: toError(error) });
-    } finally {
-      this.isInstalling = false;
+      await execAsync(`${this.binaryPath} --version`);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -102,18 +63,22 @@ export class SemgrepScanner implements SecurityScanner {
   async scan(paths: string[]): Promise<ScanResult> {
     const startTime = Date.now();
 
-    const semgrepPath = await this.getSemgrepPath();
-    if (!semgrepPath) {
-      throw new Error('Semgrep is not installed and background installation is in progress or failed.');
-    }
-
     try {
-      const { stdout } = await promisify(this.execFn)(
-        `${semgrepPath} --config=auto --json ${paths.join(' ')}`,
+      // Quote paths to handle spaces
+      const quotedPaths = paths.map(p => `"${p}"`).join(' ');
+      const { stdout } = await execAsync(
+        `${this.binaryPath} --config=auto --json ${quotedPaths}`,
         { maxBuffer: 10 * 1024 * 1024 }
       );
 
-      const data = JSON.parse(stdout);
+      // Find the start of the JSON object to handle potential warnings before it
+      const jsonStart = stdout.indexOf('{');
+      if (jsonStart === -1) {
+        throw new Error('Semgrep output did not contain valid JSON');
+      }
+      const jsonContent = stdout.substring(jsonStart);
+
+      const data = JSON.parse(jsonContent);
       const issues = this.parseFindings(data.results || []);
 
       return {

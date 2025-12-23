@@ -22,7 +22,7 @@ describe("SemgrepScanner", () => {
         scanner = new SemgrepScanner(mockExec as any);
     });
 
-    it("should attempt to install semgrep if not available anywhere", async () => {
+    it("should return false if semgrep is not available", async () => {
         // Mock exec to fail for all semgrep checks
         mockExec = (cmd: string, options: any, callback: any) => {
             if (typeof options === 'function') callback = options;
@@ -33,9 +33,21 @@ describe("SemgrepScanner", () => {
 
         const available = await scanner.isAvailable();
         expect(available).toBe(false);
+    });
 
-        // Wait a tiny bit for the background promise to start
-        await new Promise(resolve => setTimeout(resolve, 10));
+    it("should allow setting custom binary path", async () => {
+        let lastCommand = "";
+        mockExec = (cmd: string, options: any, callback: any) => {
+            lastCommand = cmd;
+            if (typeof options === 'function') callback = options;
+            callback(null, "1.0.0", "");
+            return { on: () => { } };
+        };
+        scanner = new SemgrepScanner(mockExec as any);
+        scanner.setBinaryPath("/custom/path/to/semgrep");
+
+        await scanner.isAvailable();
+        expect(lastCommand).toContain("/custom/path/to/semgrep");
     });
 
     it("should be available if system semgrep exists", async () => {

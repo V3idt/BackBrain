@@ -4,19 +4,24 @@ import { createLogger } from '@backbrain/core';
 
 const logger = createLogger('ScanFile');
 
+import { SeverityPanelProvider } from '../views/severity-panel-provider';
+
 interface CommandContext {
   fileSystem: FileSystem;
   securityService: SecurityService;
+  severityPanelProvider: SeverityPanelProvider;
 }
 
-export async function scanFileCommand(ctx: CommandContext) {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage('No active file to scan');
+export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri) {
+  // Use provided URI (explorer context) or fallback to active editor
+  const targetUri = uri || vscode.window.activeTextEditor?.document.uri;
+
+  if (!targetUri) {
+    vscode.window.showWarningMessage('No file selected to scan');
     return;
   }
 
-  const filePath = editor.document.uri.fsPath;
+  const filePath = targetUri.fsPath;
   logger.info('Scanning file', { filePath });
 
   try {
@@ -24,19 +29,23 @@ export async function scanFileCommand(ctx: CommandContext) {
       location: vscode.ProgressLocation.Notification,
       title: "BackBrain: Scanning file...",
       cancellable: false
-    }, async (progress) => {
+    }, async (_progress) => {
       const content = await ctx.fileSystem.readFile(filePath);
       const result = await ctx.securityService.scanFile(filePath, content);
+
+      // Update the Severity Panel with the new results
+      ctx.severityPanelProvider.showIssues(result.issues);
 
       const critical = result.issues.filter((i: CodeIssue) => i.severity === 'critical').length;
       const high = result.issues.filter((i: CodeIssue) => i.severity === 'high').length;
       const total = result.issues.length;
 
       if (total === 0) {
-        vscode.window.showInformationMessage('No issues found');
+        vscode.window.showInformationMessage('BackBrain: No issues found');
       } else {
-        vscode.window.showWarningMessage(
-          `Found ${total} issue(s): ${critical} critical, ${high} high`
+        // Less intrusive information message, focus the panel
+        vscode.window.showInformationMessage(
+          `BackBrain: Found ${total} issue(s) (${critical} critical, ${high} high). Details in Severity Panel.`
         );
       }
 
@@ -44,6 +53,6 @@ export async function scanFileCommand(ctx: CommandContext) {
     });
   } catch (error) {
     logger.error('Scan failed', { error });
-    vscode.window.showErrorMessage(`Scan failed: ${error}`);
+    vscode.window.showErrorMessage(`BackBrain: Scan failed: ${error}`);
   }
 }

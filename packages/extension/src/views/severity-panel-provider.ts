@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { createLogger, type SecurityService, type CodeIssue } from '@backbrain/core';
-import type { WebviewMessage, IssueData } from '../webview/messages';
+import { createLogger, type SecurityService } from '@backbrain/core';
+import { type WebviewMessage, type IssueData, toIssueData } from '../webview/messages';
 
 const logger = createLogger('SeverityPanel');
 
@@ -12,6 +12,19 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         private readonly _extensionUri: vscode.Uri,
         private readonly _securityService: SecurityService,
     ) { }
+
+    /**
+     * Public method to show issues from an external scan
+     */
+    public showIssues(issues: any[]): void {
+        const issueData: IssueData[] = issues.map(issue => toIssueData(issue));
+        this._postMessage({ type: 'scanComplete', issues: issueData });
+
+        // Focus the view if it exists
+        if (this._view) {
+            this._view.show(true);
+        }
+    }
 
     public async resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -74,11 +87,18 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         logger.info('Starting workspace scan...');
 
         try {
-            // Find files to scan (TypeScript/JavaScript for now)
+            // Dynamically get supported extensions from all available scanners
+            const extensions = await this._securityService.getSupportedExtensions();
+            const extensionPattern = extensions.map(ext => ext.replace('.', '')).join(',');
+            const globPattern = `**/*.{${extensionPattern}}`;
+
+            logger.debug(`Dynamic glob pattern for scan: ${globPattern}`);
+
+            // Find files to scan
             const files = await vscode.workspace.findFiles(
-                '**/*.{ts,tsx,js,jsx,py}',
+                globPattern,
                 '**/node_modules/**',
-                500 // Limit to 500 files
+                1000 // Increased limit to 1000 files
             );
 
             const filePaths = files.map(f => f.fsPath);
@@ -88,7 +108,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
             const result = await this._securityService.scan(filePaths);
 
             // Convert to IssueData for the webview
-            const issueData: IssueData[] = result.issues.map(issue => this._toIssueData(issue));
+            const issueData: IssueData[] = result.issues.map(issue => toIssueData(issue));
 
             logger.info(`Scan complete: ${issueData.length} issues found`);
             this._postMessage({ type: 'scanComplete', issues: issueData });
@@ -127,26 +147,6 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Convert CodeIssue to IssueData for the webview
-     */
-    private _toIssueData(issue: CodeIssue): IssueData {
-        const data: IssueData = {
-            id: issue.id,
-            title: issue.title,
-            description: issue.description,
-            severity: issue.severity,
-            filePath: issue.location.filePath,
-            line: issue.location.line,
-            category: issue.category,
-        };
-        // Only include column if defined (exactOptionalPropertyTypes)
-        if (issue.location.column !== undefined) {
-            data.column = issue.location.column;
-        }
-        return data;
-    }
-
-    /**
      * Post message to webview
      */
     private _postMessage(message: { type: string;[key: string]: unknown }): void {
@@ -164,7 +164,6 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
 
         // 1. Replace asset paths with webview URIs
         // Vite builds assets into /assets/ and references them with absolute paths in the built index.html
-        // We use a more robust regex that handles single/double quotes and is case-insensitive for attributes.
         html = html.replace(
             /(href|src)=(['"])\/assets\/([^'"]+)\2/gi,
             (_match, attr, _quote, fileName) => {
@@ -173,21 +172,24 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
             }
         );
 
-        // 2. Inject Content Security Policy (CSP)
+        // 2. Inject Content Security Policy (CSP) and Nonce
+        // We use a more robust approach: find the <head> tag and inject CSP, then add nonce to all scripts.
         const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">`;
 
-        // Robust injection: try to find <head>, otherwise inject at the start of <html> or the very beginning
+        // Inject CSP into <head>
         if (/<head[^>]*>/i.test(html)) {
-            html = html.replace(/(<head[^>]*>)/i, `$1\n\t\t\t\t${csp}`);
-        } else if (/<html[^>]*>/i.test(html)) {
-            html = html.replace(/(<html[^>]*>)/i, `$1\n\t\t\t\t<head>\n\t\t\t\t${csp}\n\t\t\t\t</head>`);
+            html = html.replace(/(<head[^>]*>)/i, `$1\n\t\t${csp}`);
         } else {
+            // Fallback: inject at the very beginning if <head> is missing
             html = `<head>${csp}</head>\n${html}`;
         }
 
-        // 3. Add nonce to all script tags to satisfy the CSP
-        // We use a regex that handles existing attributes and different tag formats
-        html = html.replace(/<script\b([^>]*)>/gi, `<script nonce="${nonce}" $1>`);
+        // Add nonce to all script tags
+        html = html.replace(/<script\b([^>]*)>/gi, (_match, attrs) => {
+            // Avoid adding duplicate nonces if already present
+            if (attrs.includes('nonce=')) return _match;
+            return `<script nonce="${nonce}" ${attrs}>`;
+        });
 
         return html;
     }

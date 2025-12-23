@@ -203,4 +203,18 @@ export class SecurityService {
     async scan(paths: string[], options?: SecurityScanOptions): Promise<SecurityScanResult> {
         return runSecurityScan(paths, options);
     }
+
+    /**
+     * Get all supported extensions from available scanners
+     */
+    async getSupportedExtensions(): Promise<string[]> {
+        const extensions = new Set<string>();
+        for (const scanner of this.scanners) {
+            const available = await scanner.isAvailable();
+            if (available) {
+                scanner.getSupportedExtensions().forEach(ext => extensions.add(ext));
+            }
+        }
+        return Array.from(extensions);
+    }
 }

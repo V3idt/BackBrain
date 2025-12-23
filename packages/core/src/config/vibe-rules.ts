@@ -5,9 +5,11 @@ export interface VibeRule {
     title: string;
     description: string;
     severity: Severity;
-    pattern: RegExp | string;
-    type: 'regex' | 'logic';
-    message?: (match: any) => string;
+    pattern?: RegExp | string | undefined;
+    type: 'regex' | 'logic' | 'ai';
+    aiPrompt?: string | undefined;
+    examples?: { code: string; issue: string }[] | undefined;
+    message?: ((match: any) => string) | undefined;
 }
 
 export const DEFAULT_VIBE_RULES: VibeRule[] = [
@@ -35,12 +37,5 @@ export const DEFAULT_VIBE_RULES: VibeRule[] = [
         pattern: /\b(fetch|axios\.[a-z]+)\(/g,
         type: 'logic',
     },
-    {
-        id: 'vibe-code.deprecated-api',
-        title: 'Deprecated API',
-        description: 'Use of deprecated React lifecycle methods',
-        severity: 'medium',
-        pattern: /\b(componentWillMount|componentWillReceiveProps)\b/g,
-        type: 'regex',
     }
 ];
