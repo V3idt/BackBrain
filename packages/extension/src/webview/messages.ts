@@ -39,7 +39,14 @@ export const vscode = getVsCodeApi();
 export type WebviewMessage =
     | { type: 'requestScan' }
     | { type: 'navigateToIssue'; filePath: string; line: number; column?: number }
-    | { type: 'ready' };
+    | { type: 'ready' }
+    | { type: 'explainIssue'; issue: IssueData }
+    | { type: 'suggestFix'; issue: IssueData }
+    // Phase 10: Fix messages
+    | { type: 'applyFix'; issue: IssueData; fix: FixData }
+    | { type: 'revertFix'; sessionId: string }
+    | { type: 'batchFix' }
+    | { type: 'requestFixHistory' };
 
 // ============================================================================
 // Extension → Webview Messages
@@ -48,7 +55,40 @@ export type WebviewMessage =
 export type ExtensionMessage =
     | { type: 'scanStarted' }
     | { type: 'scanComplete'; issues: IssueData[] }
-    | { type: 'scanError'; error: string };
+    | { type: 'scanError'; error: string }
+    // Phase 10: Fix messages
+    | { type: 'fixApplied'; sessionId: string; summary: FixSummaryData }
+    | { type: 'fixReverted'; sessionId: string }
+    | { type: 'fixHistory'; sessions: FixSessionData[] }
+    | { type: 'fixError'; error: string }
+    | { type: 'fixSuggested'; issueId: string; fix: FixData };
+
+// ============================================================================
+// Fix Data Types
+// ============================================================================
+
+export interface FixData {
+    description: string;
+    replacement: string;
+    original?: string;
+    autoFixable: boolean;
+}
+
+export interface FixSummaryData {
+    totalIssues: number;
+    fixed: number;
+    skipped: number;
+    failed: number;
+}
+
+export interface FixSessionData {
+    sessionId: string;
+    timestamp: number;
+    fixed: number;
+    failed: number;
+    files: string[];
+    reverted: boolean;
+}
 
 // ============================================================================
 // Issue Data (simplified for UI)

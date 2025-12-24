@@ -1,0 +1,123 @@
+/**
+ * Tests for Vercel AI Adapter
+ */
+
+import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { VercelAIAdapter, createAIAdapter } from '../../packages/core/src/adapters/vercel-ai-adapter';
+import type { AIProviderConfig } from '../../packages/core/src/config/ai-config';
+
+describe('VercelAIAdapter', () => {
+    describe('constructor', () => {
+        it('should create an adapter with the correct name', () => {
+            const config: AIProviderConfig = {
+                provider: 'openai',
+                model: 'gpt-4o',
+                apiKey: 'test-key',
+            };
+            const adapter = new VercelAIAdapter(config);
+            expect(adapter.name).toBe('vercel-ai-openai');
+        });
+
+        it('should create adapter for each supported provider', () => {
+            const providers: Array<'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek'> = [
+                'openai', 'anthropic', 'google', 'xai', 'deepseek'
+            ];
+
+            for (const provider of providers) {
+                const config: AIProviderConfig = {
+                    provider,
+                    model: 'test-model',
+                    apiKey: 'test-key',
+                };
+                const adapter = new VercelAIAdapter(config);
+                expect(adapter.name).toBe(`vercel-ai-${provider}`);
+            }
+        });
+    });
+
+    describe('isAvailable', () => {
+        it('should return false when no API key is provided', async () => {
+            const config: AIProviderConfig = {
+                provider: 'openai',
+                model: 'gpt-4o',
+            };
+            const adapter = new VercelAIAdapter(config);
+            const available = await adapter.isAvailable();
+            expect(available).toBe(false);
+        });
+
+        it('should return true when API key is provided', async () => {
+            const config: AIProviderConfig = {
+                provider: 'openai',
+                model: 'gpt-4o',
+                apiKey: 'test-key',
+            };
+            const adapter = new VercelAIAdapter(config);
+            const available = await adapter.isAvailable();
+            expect(available).toBe(true);
+        });
+    });
+
+    describe('getConfig', () => {
+        it('should return config without API key', () => {
+            const config: AIProviderConfig = {
+                provider: 'anthropic',
+                model: 'claude-3-sonnet',
+                apiKey: 'secret-key',
+            };
+            const adapter = new VercelAIAdapter(config);
+            const returnedConfig = adapter.getConfig();
+
+            expect(returnedConfig.provider).toBe('anthropic');
+            expect(returnedConfig.model).toBe('claude-3-sonnet');
+            expect('apiKey' in returnedConfig).toBe(false);
+        });
+    });
+
+    describe('updateConfig', () => {
+        it('should update model without reinitializing provider', () => {
+            const config: AIProviderConfig = {
+                provider: 'openai',
+                model: 'gpt-4o',
+                apiKey: 'test-key',
+            };
+            const adapter = new VercelAIAdapter(config);
+
+            adapter.updateConfig({ model: 'gpt-4o-mini' });
+
+            const newConfig = adapter.getConfig();
+            expect(newConfig.model).toBe('gpt-4o-mini');
+            expect(newConfig.provider).toBe('openai');
+        });
+    });
+});
+
+describe('createAIAdapter', () => {
+    it('should create an adapter with default model when model is not specified', () => {
+        const adapter = createAIAdapter('openai', 'test-key');
+        const config = adapter.getConfig();
+        expect(config.model).toBe('gpt-4o');
+    });
+
+    it('should create an adapter with custom model when specified', () => {
+        const adapter = createAIAdapter('openai', 'test-key', 'gpt-4o-mini');
+        const config = adapter.getConfig();
+        expect(config.model).toBe('gpt-4o-mini');
+    });
+
+    it('should use default models for each provider', () => {
+        const expectedModels: Record<string, string> = {
+            openai: 'gpt-4o',
+            anthropic: 'claude-sonnet-4-20250514',
+            google: 'gemini-2.0-flash',
+            xai: 'grok-3',
+            deepseek: 'deepseek-chat',
+        };
+
+        for (const [provider, expectedModel] of Object.entries(expectedModels)) {
+            const adapter = createAIAdapter(provider as any, 'test-key');
+            const config = adapter.getConfig();
+            expect(config.model).toBe(expectedModel);
+        }
+    });
+});

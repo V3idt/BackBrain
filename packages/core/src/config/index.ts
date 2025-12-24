@@ -116,3 +116,4 @@ function validateConfig(config: BackBrainConfig): void {
 export * from './branding';
 export * from './vibe-rules';
 export * from './rule-parser';
+export * from './ai-config';

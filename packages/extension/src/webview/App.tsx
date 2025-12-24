@@ -5,8 +5,9 @@ import {
     vsCodeProgressRing
 } from '@vscode/webview-ui-toolkit';
 import { vscode } from './messages';
-import type { IssueData, ExtensionMessage } from './messages';
+import type { IssueData, ExtensionMessage, FixSessionData, FixData } from './messages';
 import { IssueList } from './components/IssueList';
+import { FixHistory } from './components/FixHistory';
 import './styles/theme.css';
 
 // Register VS Code Web Components
@@ -20,6 +21,8 @@ const App: React.FC = () => {
     const [issues, setIssues] = useState<IssueData[]>(initialState?.issues || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [fixHistory, setFixHistory] = useState<FixSessionData[]>([]);
+    const [activeFix, setActiveFix] = useState<{ issueId: string; fix: FixData } | null>(null);
 
     // Persist issues whenever they change
     useEffect(() => {
@@ -44,6 +47,23 @@ const App: React.FC = () => {
                     setError(message.error);
                     setLoading(false);
                     break;
+                case 'fixSuggested':
+                    setActiveFix({ issueId: message.issueId, fix: message.fix });
+                    break;
+                case 'fixHistory':
+                    setFixHistory(message.sessions);
+                    break;
+                case 'fixApplied':
+                    // Clear active fix and refresh history
+                    setActiveFix(null);
+                    vscode.postMessage({ type: 'requestFixHistory' });
+                    // Also refresh scan to remove fixed issue
+                    vscode.postMessage({ type: 'requestScan' });
+                    break;
+                case 'fixReverted':
+                    vscode.postMessage({ type: 'requestFixHistory' });
+                    vscode.postMessage({ type: 'requestScan' });
+                    break;
             }
         };
 
@@ -51,6 +71,8 @@ const App: React.FC = () => {
 
         // Signal that the webview is ready
         vscode.postMessage({ type: 'ready' });
+        // Request initial history
+        vscode.postMessage({ type: 'requestFixHistory' });
 
         return () => window.removeEventListener('message', handleMessage);
     }, []);
@@ -148,7 +170,20 @@ const App: React.FC = () => {
             )}
 
             {/* Issue List */}
-            <IssueList issues={issues} loading={loading} />
+            <IssueList
+                issues={issues}
+                loading={loading}
+                activeFix={activeFix}
+                onClearActiveFix={() => setActiveFix(null)}
+            />
+
+            {/* Fix History */}
+            <div style={{ marginTop: 'var(--bb-spacing-xl)' }}>
+                <FixHistory
+                    sessions={fixHistory}
+                    onRevert={(sessionId) => vscode.postMessage({ type: 'revertFix', sessionId })}
+                />
+            </div>
         </div>
     );
 };

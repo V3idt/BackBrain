@@ -3,6 +3,11 @@ import type { FileSystem, SecurityService } from '@backbrain/core';
 import { scanFileCommand } from './scan-file';
 import { scanWorkspaceCommand } from './scan-workspace';
 import { showSecurityPanelCommand } from './show-security-panel';
+import { registerExplainIssueCommand } from './explainIssueCommand';
+import { registerSuggestFixCommand } from './suggestFixCommand';
+import { registerApplyFixCommand } from './applyFixCommand';
+import { registerRevertFixCommand } from './revertFixCommand';
+import { registerBatchFixCommand } from './batchFixCommand';
 
 import { SeverityPanelProvider } from '../views/severity-panel-provider';
 
@@ -16,6 +21,13 @@ export function registerCommands(context: vscode.ExtensionContext, ctx: CommandC
   context.subscriptions.push(
     vscode.commands.registerCommand('backbrain.scanFile', (uri?: vscode.Uri) => scanFileCommand(ctx, uri)),
     vscode.commands.registerCommand('backbrain.scanWorkspace', () => scanWorkspaceCommand(ctx)),
-    vscode.commands.registerCommand('backbrain.showSecurityPanel', () => showSecurityPanelCommand())
+    vscode.commands.registerCommand('backbrain.showSecurityPanel', () => showSecurityPanelCommand()),
+    // AI-powered commands
+    registerExplainIssueCommand(context),
+    registerSuggestFixCommand(context),
+    // Fix commands (Phase 10)
+    registerApplyFixCommand(context),
+    registerRevertFixCommand(context),
+    registerBatchFixCommand(context)
   );
 }

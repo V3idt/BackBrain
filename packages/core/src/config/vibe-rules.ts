@@ -37,5 +37,4 @@ export const DEFAULT_VIBE_RULES: VibeRule[] = [
         pattern: /\b(fetch|axios\.[a-z]+)\(/g,
         type: 'logic',
     },
-    }
 ];

@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import type { IssueData } from '../messages';
+import type { IssueData, FixData } from '../messages';
 import { IssueItem } from './IssueItem';
 import './IssueList.css';
 
 interface IssueListProps {
     issues: IssueData[];
     loading?: boolean;
+    activeFix: { issueId: string; fix: FixData } | null;
+    onClearActiveFix: () => void;
 }
 
 type SortMethod = 'severity' | 'filename';
@@ -18,7 +20,7 @@ const severityRank: Record<string, number> = {
     'info': 4,
 };
 
-export const IssueList: React.FC<IssueListProps> = ({ issues, loading }) => {
+export const IssueList: React.FC<IssueListProps> = ({ issues, loading, activeFix, onClearActiveFix }) => {
     const [sortMethod, setSortMethod] = useState<SortMethod>('severity');
 
     const sortedAndGroupedIssues = useMemo(() => {
@@ -108,7 +110,12 @@ export const IssueList: React.FC<IssueListProps> = ({ issues, loading }) => {
 
                         {/* Issues for this file */}
                         {fileIssues.map((issue) => (
-                            <IssueItem key={issue.id} issue={issue} />
+                            <IssueItem
+                                key={issue.id}
+                                issue={issue}
+                                activeFix={activeFix?.issueId === issue.id ? activeFix.fix : null}
+                                onClearActiveFix={onClearActiveFix}
+                            />
                         ))}
                     </div>
                 );

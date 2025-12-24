@@ -3,6 +3,7 @@ import { VibeCodeScanner } from './vibe-code-scanner';
 
 export * from './semgrep-scanner';
 export * from './vibe-code-scanner';
+export * from './vercel-ai-adapter';
 
 export const DEFAULT_SCANNERS = [
     { name: 'semgrep', scanner: new SemgrepScanner() },

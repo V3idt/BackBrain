@@ -59,3 +59,47 @@
     white-space: pre-wrap;
     word-break: break-all;
 }
+
+/* AI Action Buttons */
+.issue-actions {
+    display: flex;
+    gap: var(--bb-spacing-sm);
+    margin-top: var(--bb-spacing-md);
+    padding-top: var(--bb-spacing-sm);
+    border-top: 1px solid var(--bb-color-border);
+}
+
+.action-button {
+    font-size: var(--bb-font-size-xs);
+    font-weight: var(--bb-font-weight-medium);
+    padding: var(--bb-spacing-xs) var(--bb-spacing-md);
+    border: 1px solid var(--bb-color-border);
+    border-radius: var(--bb-border-radius-sm);
+    background-color: var(--bb-color-background-secondary);
+    color: var(--bb-color-foreground);
+    cursor: pointer;
+    transition: all var(--bb-transition-fast);
+}
+
+.action-button:hover {
+    background-color: var(--bb-color-background-active);
+    border-color: var(--bb-color-link);
+}
+
+.action-explain {
+    color: var(--bb-color-link);
+}
+
+.action-explain:hover {
+    background-color: var(--bb-color-link);
+    color: var(--bb-color-background);
+}
+
+.action-fix {
+    color: var(--bb-severity-high);
+}
+
+.action-fix:hover {
+    background-color: var(--bb-severity-high);
+    color: var(--bb-color-background);
+}

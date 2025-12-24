@@ -6,6 +6,8 @@ import { initVSCodeLogging } from './logger-vscode';
 import { SeverityPanelProvider } from './views/severity-panel-provider';
 import { SemgrepInstaller } from './utils/semgrep-installer';
 import { VibeRuleLoader } from './utils/vibe-rule-loader';
+import { initializeAIKeyService } from './services/ai-key-service';
+import { initializeFixHistoryService } from './services/fix-history-service';
 
 const logger = createLogger('Extension');
 
@@ -20,6 +22,12 @@ export async function activate(context: vscode.ExtensionContext) {
     const fileSystem = new VSCodeFileSystem();
     const registry = new ProviderRegistry();
     const installer = new SemgrepInstaller(context);
+
+    // Initialize AI Key Service (internal, for future flexibility)
+    initializeAIKeyService(context);
+
+    // Initialize Fix History Service (Phase 10)
+    initializeFixHistoryService(context);
 
     // Check Semgrep availability
     let semgrepPath = '';

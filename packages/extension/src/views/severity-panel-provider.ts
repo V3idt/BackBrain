@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { createLogger, type SecurityService } from '@backbrain/core';
-import { type WebviewMessage, type IssueData, toIssueData } from '../webview/messages';
+import { type WebviewMessage, type IssueData, type FixData, type FixSessionData, toIssueData } from '../webview/messages';
+import { getFixHistoryService } from '../services/fix-history-service';
 
 const logger = createLogger('SeverityPanel');
 
@@ -67,6 +68,31 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
 
                 case 'navigateToIssue':
                     await this._handleNavigateToIssue(message.filePath, message.line, message.column);
+                    break;
+
+                case 'explainIssue':
+                    await this._handleExplainIssue(message.issue);
+                    break;
+
+                case 'suggestFix':
+                    await this._handleSuggestFix(message.issue);
+                    break;
+
+                // Phase 10: Fix message handlers
+                case 'applyFix':
+                    await this._handleApplyFix(message.issue, message.fix);
+                    break;
+
+                case 'revertFix':
+                    await this._handleRevertFix(message.sessionId);
+                    break;
+
+                case 'batchFix':
+                    await vscode.commands.executeCommand('backbrain.batchFix');
+                    break;
+
+                case 'requestFixHistory':
+                    this._sendFixHistory();
                     break;
             }
         });
@@ -143,6 +169,113 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             logger.error('Failed to navigate to issue', { error, filePath, line });
             vscode.window.showErrorMessage(`Could not open file: ${filePath}`);
+        }
+    }
+
+    /**
+     * Handle explain issue request from webview
+     */
+    private async _handleExplainIssue(issueData: IssueData): Promise<void> {
+        logger.info('Explaining issue', { id: issueData.id, title: issueData.title });
+
+        // Convert IssueData to SecurityIssue format
+        const issue = {
+            ruleId: issueData.id,
+            title: issueData.title,
+            description: issueData.description,
+            severity: issueData.severity,
+            filePath: issueData.filePath,
+            line: issueData.line,
+            snippet: issueData.snippet,
+        };
+
+        // Invoke the AI explain command
+        await vscode.commands.executeCommand('backbrain.explainIssue', issue);
+    }
+
+    /**
+     * Handle suggest fix request from webview
+     */
+    private async _handleSuggestFix(issueData: IssueData): Promise<void> {
+        logger.info('Suggesting fix', { id: issueData.id, title: issueData.title });
+
+        // Convert IssueData to SecurityIssue format
+        const issue = {
+            ruleId: issueData.id,
+            title: issueData.title,
+            description: issueData.description,
+            severity: issueData.severity,
+            filePath: issueData.filePath,
+            line: issueData.line,
+            snippet: issueData.snippet,
+        };
+
+        // Invoke the AI suggest fix command
+        const fix = await vscode.commands.executeCommand<any>('backbrain.suggestFix', issue, { silent: true });
+
+        if (fix) {
+            this._postMessage({
+                type: 'fixSuggested',
+                issueId: issueData.id,
+                fix: {
+                    description: fix.description,
+                    replacement: fix.replacement,
+                    original: fix.original,
+                    autoFixable: fix.autoFixable
+                }
+            });
+        }
+    }
+
+    /**
+     * Handle apply fix request from webview (Phase 10)
+     */
+    private async _handleApplyFix(issueData: IssueData, fix: FixData): Promise<void> {
+        logger.info('Applying fix', { id: issueData.id, description: fix.description });
+
+        const issue = {
+            ruleId: issueData.id,
+            title: issueData.title,
+            description: issueData.description,
+            severity: issueData.severity,
+            filePath: issueData.filePath,
+            line: issueData.line,
+            snippet: issueData.snippet,
+        };
+
+        // Invoke the apply fix command
+        await vscode.commands.executeCommand('backbrain.applyFix', issue, fix);
+    }
+
+    /**
+     * Handle revert fix request from webview (Phase 10)
+     */
+    private async _handleRevertFix(sessionId: string): Promise<void> {
+        logger.info('Reverting fix session', { sessionId });
+        await vscode.commands.executeCommand('backbrain.revertFix', sessionId);
+    }
+
+    /**
+     * Send fix history to webview (Phase 10)
+     */
+    private _sendFixHistory(): void {
+        try {
+            const historyService = getFixHistoryService();
+            const sessions = historyService.getSessions();
+
+            const sessionData: FixSessionData[] = sessions.map(s => ({
+                sessionId: s.sessionId,
+                timestamp: s.timestamp,
+                fixed: s.summary.fixed,
+                failed: s.summary.failed,
+                files: s.files,
+                reverted: s.reverted,
+            }));
+
+            this._postMessage({ type: 'fixHistory', sessions: sessionData });
+        } catch (error) {
+            logger.error('Failed to get fix history', { error });
+            this._postMessage({ type: 'fixError', error: 'Failed to load fix history' });
         }
     }
 

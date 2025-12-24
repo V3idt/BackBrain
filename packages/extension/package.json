@@ -30,6 +30,14 @@
       {
         "command": "backbrain.showSecurityPanel",
         "title": "BackBrain: Show Security Panel"
+      },
+      {
+        "command": "backbrain.explainIssue",
+        "title": "BackBrain: Explain Issue with AI"
+      },
+      {
+        "command": "backbrain.suggestFix",
+        "title": "BackBrain: Suggest Fix with AI"
       }
     ],
     "configuration": {
