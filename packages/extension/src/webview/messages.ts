@@ -46,7 +46,8 @@ export type WebviewMessage =
     | { type: 'applyFix'; issue: IssueData; fix: FixData }
     | { type: 'revertFix'; sessionId: string }
     | { type: 'batchFix' }
-    | { type: 'requestFixHistory' };
+    | { type: 'requestFixHistory' }
+    | { type: 'exportReport' };
 
 // ============================================================================
 // Extension → Webview Messages

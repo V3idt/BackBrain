@@ -8,6 +8,7 @@ const logger = createLogger('SeverityPanel');
 export class SeverityPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'backbrain.severityPanel';
     private _view?: vscode.WebviewView;
+    private _issues: IssueData[] = [];
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -25,6 +26,10 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         if (this._view) {
             this._view.show(true);
         }
+    }
+
+    public getIssues(): IssueData[] {
+        return this._issues || [];
     }
 
     public async resolveWebviewView(
@@ -94,6 +99,10 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
                 case 'requestFixHistory':
                     this._sendFixHistory();
                     break;
+
+                case 'exportReport':
+                    await vscode.commands.executeCommand('backbrain.generateReport');
+                    break;
             }
         });
     }
@@ -135,6 +144,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
 
             // Convert to IssueData for the webview
             const issueData: IssueData[] = result.issues.map(issue => toIssueData(issue));
+            this._issues = issueData;
 
             logger.info(`Scan complete: ${issueData.length} issues found`);
             this._postMessage({ type: 'scanComplete', issues: issueData });

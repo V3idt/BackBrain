@@ -8,6 +8,7 @@ import { registerSuggestFixCommand } from './suggestFixCommand';
 import { registerApplyFixCommand } from './applyFixCommand';
 import { registerRevertFixCommand } from './revertFixCommand';
 import { registerBatchFixCommand } from './batchFixCommand';
+import { registerGenerateReportCommand } from './generateReportCommand';
 
 import { SeverityPanelProvider } from '../views/severity-panel-provider';
 
@@ -28,6 +29,8 @@ export function registerCommands(context: vscode.ExtensionContext, ctx: CommandC
     // Fix commands (Phase 10)
     registerApplyFixCommand(context),
     registerRevertFixCommand(context),
-    registerBatchFixCommand(context)
+    registerBatchFixCommand(context),
+    // Report command (Phase 11)
+    registerGenerateReportCommand(context, ctx.severityPanelProvider)
   );
 }

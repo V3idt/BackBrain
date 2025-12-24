@@ -113,6 +113,14 @@ const App: React.FC = () => {
                 >
                     {loading ? 'Scanning...' : 'Scan Workspace'}
                 </vscode-button>
+                <vscode-button
+                    appearance="icon"
+                    onClick={() => vscode.postMessage({ type: 'exportReport' })}
+                    title="Export Report"
+                    style={{ marginLeft: 'var(--bb-spacing-sm)' }}
+                >
+                    <span className="codicon codicon-export"></span>
+                </vscode-button>
             </div>
 
             {/* Summary Badges */}
