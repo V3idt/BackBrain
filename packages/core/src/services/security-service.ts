@@ -34,7 +34,7 @@ function toCodeIssue(issue: SecurityIssue): CodeIssue {
 
     const fix: CodeFix | undefined = issue.suggestedFix ? {
         description: issue.suggestedFix.description,
-        original: issue.suggestedFix.original ?? '',
+        original: issue.suggestedFix.original,
         replacement: issue.suggestedFix.replacement,
         autoFixable: issue.suggestedFix.autoFixable,
     } : undefined;

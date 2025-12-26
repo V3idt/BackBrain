@@ -37,4 +37,12 @@ export const DEFAULT_VIBE_RULES: VibeRule[] = [
         pattern: /\b(fetch|axios\.[a-z]+)\(/g,
         type: 'logic',
     },
+    {
+        id: 'vibe-code.deprecated-api',
+        title: 'Deprecated API',
+        description: 'Use of deprecated React lifecycle methods',
+        severity: 'medium',
+        pattern: /componentWillMount|componentWillReceiveProps|componentWillUpdate/g,
+        type: 'regex',
+    },
 ];

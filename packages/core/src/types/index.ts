@@ -42,7 +42,7 @@ export type IssueCategory = 'security' | 'quality' | 'style' | 'dependency' | 'l
 
 export interface CodeFix {
     description: string;
-    original: string;
+    original?: string | undefined;
     replacement: string;
     autoFixable: boolean;
 }

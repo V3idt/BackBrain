@@ -42,7 +42,7 @@ function toCodeIssue(
             column: issue.column || 1,
         },
         suggestedFix: codeFix,
-        type: 'security',
+        type: 'security_vulnerability',
         category: 'logic',
     };
 }
@@ -50,7 +50,7 @@ function toCodeIssue(
 /**
  * Register the applyFix command
  */
-export function registerApplyFixCommand(context: vscode.ExtensionContext): vscode.Disposable {
+export function registerApplyFixCommand(_context: vscode.ExtensionContext): vscode.Disposable {
     return vscode.commands.registerCommand(
         'backbrain.applyFix',
         async (issueData?: unknown, fixData?: unknown) => {

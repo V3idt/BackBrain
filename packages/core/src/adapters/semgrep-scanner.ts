@@ -4,7 +4,7 @@ import { createLogger } from '../utils/logger';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+
 
 
 const logger = createLogger('SemgrepScanner');
@@ -38,13 +38,17 @@ export class SemgrepScanner implements SecurityScanner {
     }
   }
 
+  private get execAsync() {
+    return promisify(this.execFn);
+  }
+
   setBinaryPath(path: string) {
     this.binaryPath = path;
   }
 
   async isAvailable(): Promise<boolean> {
     try {
-      await execAsync(`${this.binaryPath} --version`);
+      await this.execAsync(`${this.binaryPath} --version`);
       return true;
     } catch {
       return false;
@@ -66,7 +70,7 @@ export class SemgrepScanner implements SecurityScanner {
     try {
       // Quote paths to handle spaces
       const quotedPaths = paths.map(p => `"${p}"`).join(' ');
-      const { stdout } = await execAsync(
+      const { stdout } = await this.execAsync(
         `${this.binaryPath} --config=auto --json ${quotedPaths}`,
         { maxBuffer: 10 * 1024 * 1024 }
       );

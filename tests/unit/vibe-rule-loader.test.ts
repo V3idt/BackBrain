@@ -4,12 +4,20 @@ import { describe, expect, it, beforeEach, mock } from "bun:test";
 const mockReadFile = mock();
 mock.module("vscode", () => ({
     Uri: {
-        joinPath: (uri: any, ...parts: string[]) => ({ fsPath: uri.fsPath + '/' + parts.join('/') })
+        joinPath: (uri: any, ...parts: string[]) => ({ fsPath: uri.fsPath + '/' + parts.join('/') }),
+        file: (path: string) => ({ fsPath: path }),
+        parse: (path: string) => ({ fsPath: path })
     },
     workspace: {
         fs: {
             readFile: mockReadFile,
-        }
+        },
+        openTextDocument: mock().mockResolvedValue({}),
+    },
+    window: {
+        showErrorMessage: mock().mockResolvedValue(undefined),
+        showInformationMessage: mock().mockResolvedValue(undefined),
+        showTextDocument: mock().mockResolvedValue({}),
     },
     FileSystemError: class extends Error {
         code: string;
@@ -20,8 +28,8 @@ mock.module("vscode", () => ({
     }
 }));
 
-import { VibeRuleLoader } from "../../packages/extension/src/utils/vibe-rule-loader";
-import { DEFAULT_VIBE_RULES } from "../../packages/core/src/config/vibe-rules";
+const { VibeRuleLoader } = require("../../packages/extension/src/utils/vibe-rule-loader");
+const { DEFAULT_VIBE_RULES } = require("../../packages/core/src/config/vibe-rules");
 
 describe("VibeRuleLoader", () => {
     const mockRoot = { fsPath: "/workspace" };
