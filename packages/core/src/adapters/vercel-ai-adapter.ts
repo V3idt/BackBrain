@@ -102,9 +102,8 @@ export class VercelAIAdapter implements AIProvider {
             throw new Error(`Provider ${this.config.provider} is not initialized. Check API key.`);
         }
 
-        // Type assertion is necessary because each provider has slightly different
-        // return types, but they all conform to LanguageModel interface
-        const factory = this.providerFactory as (modelId: string) => ReturnType<typeof this.providerFactory>;
+        // Type assertion is safe because all provider factories are callable
+        const factory = this.providerFactory as any;
         return factory(this.config.model);
     }
 

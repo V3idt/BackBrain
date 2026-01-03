@@ -16,6 +16,7 @@ export interface CodeLocation {
 
 export interface CodeIssue {
     id: string;
+    ruleId?: string;
     type: CodeIssueType;
     title: string;
     description: string;

@@ -21,9 +21,9 @@ export function getVsCodeApi() {
             // Fallback for development/testing outside of VS Code
             console.warn('acquireVsCodeApi is not available. Using mock API.');
             vscodeApi = {
-                postMessage: (msg) => console.log('Mock PostMessage:', msg),
+                postMessage: (msg: WebviewMessage) => console.log('Mock PostMessage:', msg),
                 getState: () => ({}),
-                setState: (state) => console.log('Mock SetState:', state),
+                setState: (state: unknown) => console.log('Mock SetState:', state),
             };
         }
     }
@@ -38,6 +38,7 @@ export const vscode = getVsCodeApi();
 
 export type WebviewMessage =
     | { type: 'requestScan' }
+    | { type: 'requestScanFile' }
     | { type: 'navigateToIssue'; filePath: string; line: number; column?: number }
     | { type: 'ready' }
     | { type: 'explainIssue'; issue: IssueData }
@@ -57,6 +58,7 @@ export type ExtensionMessage =
     | { type: 'scanStarted' }
     | { type: 'scanComplete'; issues: IssueData[] }
     | { type: 'scanError'; error: string }
+    | { type: 'issuesUpdated'; issues: IssueData[]; batchInfo?: { current: number; total: number } }
     // Phase 10: Fix messages
     | { type: 'fixApplied'; sessionId: string; summary: FixSummaryData }
     | { type: 'fixReverted'; sessionId: string }

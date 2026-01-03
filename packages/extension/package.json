@@ -38,6 +38,14 @@
       {
         "command": "backbrain.suggestFix",
         "title": "BackBrain: Suggest Fix with AI"
+      },
+      {
+        "command": "backbrain.generateReport",
+        "title": "BackBrain: Generate Security Report"
+      },
+      {
+        "command": "backbrain.setApiKey",
+        "title": "BackBrain: Set AI API Key"
       }
     ],
     "configuration": {
@@ -45,7 +53,7 @@
       "properties": {
         "backbrain.scanOnSave": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Automatically scan files on save"
         },
         "backbrain.excludePaths": {
@@ -54,9 +62,47 @@
             "node_modules",
             "dist",
             "build",
-            ".git"
+            ".git",
+            "out"
           ],
           "description": "Paths to exclude from scanning"
+        },
+        "backbrain.autoScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan files on open/save"
+        },
+        "backbrain.scanOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trigger a full workspace scan when the extension activates"
+        },
+        "backbrain.ai.provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "anthropic",
+            "google",
+            "xai",
+            "deepseek"
+          ],
+          "default": "openai",
+          "description": "Selected AI provider for explanations and fix suggestions"
+        },
+        "backbrain.ai.model": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "Model to use for the selected provider (leave empty for default)"
+        },
+        "backbrain.ai.contextLines": {
+          "type": "number",
+          "default": 15,
+          "description": "Number of surrounding lines to include as context for AI requests"
+        },
+        "backbrain.ai.useStreaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use streaming for AI responses in the output channel"
         }
       }
     },
@@ -74,25 +120,33 @@
         {
           "type": "webview",
           "id": "backbrain.severityPanel",
-          "name": "Security Issues"
+          "name": "Security Issues",
+          "icon": "$(shield)"
         }
       ]
     }
   },
   "scripts": {
-    "build": "tsup && bun run build:webview",
+    "build": "tsup && cp -f ../core/node_modules/web-tree-sitter/tree-sitter.wasm dist/ && bun run build:webview",
     "build:webview": "vite build",
     "watch": "tsup --watch",
     "typecheck": "tsc --noEmit && tsc -p src/webview/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@backbrain/core": "workspace:*",
-    "handlebars": "^4.7.8"
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "handlebars": "^4.7.8",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/handlebars": "^4.1.0",
     "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@types/vscode": "^1.85.0",
-    "tsup": "^8.0.1"
+    "@vitejs/plugin-react": "^4.2.0",
+    "tsup": "^8.0.1",
+    "vite": "^5.0.0"
   }
 }

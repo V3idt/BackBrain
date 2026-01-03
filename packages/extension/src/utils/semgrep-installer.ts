@@ -21,6 +21,20 @@ export class SemgrepInstaller {
     }
 
     /**
+     * Escape and quote a path for shell execution
+     */
+    private quotePath(filePath: string): string {
+        const isWin = process.platform === 'win32';
+        if (isWin) {
+            // Windows: Use double quotes and escape internal quotes
+            return `"${filePath.replace(/"/g, '\\"')}"`;
+        } else {
+            // Unix: Use single quotes and escape single quotes
+            return `'${filePath.replace(/'/g, "'\\''")}' `;
+        }
+    }
+
+    /**
      * Check if Semgrep is installed and available
      */
     public async isAvailable(): Promise<boolean> {
@@ -28,8 +42,15 @@ export class SemgrepInstaller {
             // First check if we have it in our private venv
             const venvSemgrep = this.getVenvSemgrepPath();
             if (this.fs.existsSync(venvSemgrep)) {
-                logger.debug('Found Semgrep in private venv', { path: venvSemgrep });
-                return true;
+                // Verify it actually works
+                try {
+                    await this.exec(`${this.quotePath(venvSemgrep)} --version`);
+                    logger.debug('Found working Semgrep in private venv', { path: venvSemgrep });
+                    return true;
+                } catch {
+                    logger.warn('Semgrep binary exists but is not functional', { path: venvSemgrep });
+                    // Fall through to check global
+                }
             }
 
             // Then check global path
@@ -55,19 +76,25 @@ export class SemgrepInstaller {
      * Check if Python is available on the system
      */
     private async checkPythonAvailability(): Promise<string> {
-        try {
-            await this.exec('python3 --version');
-            return 'python3';
-        } catch {
+        const candidates = ['python3', 'python'];
+        
+        for (const cmd of candidates) {
             try {
-                await this.exec('python --version');
-                return 'python';
+                await this.exec(`${cmd} --version`);
+                return cmd;
             } catch {
-                throw new Error(
-                    'Python is not installed or not in PATH. Please install Python 3.7+ from https://www.python.org/downloads/'
-                );
+                continue;
             }
         }
+        
+        const isWin = process.platform === 'win32';
+        const installUrl = isWin 
+            ? 'https://www.python.org/downloads/windows/'
+            : 'https://www.python.org/downloads/';
+        
+        throw new Error(
+            `Python is not installed or not in PATH. Please install Python 3.7+ from ${installUrl}`
+        );
     }
 
     /**
@@ -98,13 +125,13 @@ export class SemgrepInstaller {
      */
     public async install(): Promise<void> {
         logger.info('Starting Semgrep installation...');
+        const venvPath = this.getVenvPath();
+        let venvCreated = false;
 
         try {
             // 1. Check Python availability and version
             const pythonCmd = await this.checkPythonAvailability();
             await this.checkPythonVersion(pythonCmd);
-
-            const venvPath = this.getVenvPath();
 
             // 2. Ensure ~/.backbrain directory exists (handle permissions)
             const backbrainDir = path.dirname(venvPath);
@@ -112,8 +139,14 @@ export class SemgrepInstaller {
                 try {
                     this.fs.mkdirSync(backbrainDir, { recursive: true });
                 } catch (err) {
+                    const error = err as NodeJS.ErrnoException;
+                    if (error.code === 'EACCES' || error.code === 'EPERM') {
+                        throw new Error(
+                            `Permission denied creating ${backbrainDir}. Please run with appropriate permissions.`
+                        );
+                    }
                     throw new Error(
-                        `Cannot create directory ${backbrainDir}. Please check file permissions or create it manually.`
+                        `Cannot create directory ${backbrainDir}: ${error.message}`
                     );
                 }
             }
@@ -121,11 +154,28 @@ export class SemgrepInstaller {
             // 3. Create venv if it doesn't exist
             if (!this.fs.existsSync(venvPath)) {
                 logger.info('Creating virtual environment', { venvPath });
-                await this.exec(`${pythonCmd} -m venv ${venvPath}`);
+                try {
+                    await this.exec(`${pythonCmd} -m venv ${this.quotePath(venvPath)}`);
+                    venvCreated = true;
+                } catch (err) {
+                    const error = err as Error;
+                    throw new Error(
+                        `Failed to create Python virtual environment: ${error.message}. ` +
+                        `Ensure 'python3-venv' package is installed on Linux.`
+                    );
+                }
             }
 
-            // 4. Install semgrep with retry logic
+            // 4. Upgrade pip first (prevents many installation issues)
             const pipPath = this.getVenvPipPath();
+            logger.info('Upgrading pip', { pipPath });
+            try {
+                await this.exec(`${this.quotePath(pipPath)} install --upgrade pip`);
+            } catch (err) {
+                logger.warn('Failed to upgrade pip, continuing anyway', { error: err });
+            }
+
+            // 5. Install semgrep with retry logic
             logger.info('Installing semgrep via pip', { pipPath });
 
             const maxRetries = 3;
@@ -133,9 +183,9 @@ export class SemgrepInstaller {
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
-                    await this.exec(`"${pipPath}" install semgrep`);
+                    await this.exec(`${this.quotePath(pipPath)} install semgrep`, 120000); // 2 min timeout
                     logger.info('Semgrep installed successfully');
-                    return;
+                    break;
                 } catch (err) {
                     lastError = err as Error;
                     logger.warn(`Installation attempt ${attempt} failed`, { error: err });
@@ -147,13 +197,53 @@ export class SemgrepInstaller {
                 }
             }
 
-            throw new Error(
-                `Failed to install Semgrep after ${maxRetries} attempts. ` +
-                `Please check your internet connection and try again. ` +
-                `Error: ${lastError?.message || 'Unknown error'}`
-            );
+            if (lastError) {
+                const errorMsg = lastError.message.toLowerCase();
+                if (errorMsg.includes('network') || errorMsg.includes('connection')) {
+                    throw new Error(
+                        `Network error during installation. Please check your internet connection and try again.`
+                    );
+                } else if (errorMsg.includes('permission')) {
+                    throw new Error(
+                        `Permission error during installation. Try running with appropriate permissions.`
+                    );
+                } else {
+                    throw new Error(
+                        `Failed to install Semgrep after ${maxRetries} attempts: ${lastError.message}`
+                    );
+                }
+            }
+
+            // 6. Verify installation
+            const semgrepPath = this.getVenvSemgrepPath();
+            if (!this.fs.existsSync(semgrepPath)) {
+                throw new Error(
+                    `Semgrep binary not found after installation at ${semgrepPath}. Installation may have failed silently.`
+                );
+            }
+
+            try {
+                await this.exec(`${this.quotePath(semgrepPath)} --version`);
+                logger.info('Semgrep installation verified successfully');
+            } catch (err) {
+                throw new Error(
+                    `Semgrep installed but is not functional. Try reinstalling or install manually from https://semgrep.dev/docs/getting-started/`
+                );
+            }
+
         } catch (error) {
             logger.error('Semgrep installation failed', { error });
+            
+            // Cleanup on failure if we created the venv
+            if (venvCreated && this.fs.existsSync(venvPath)) {
+                logger.info('Cleaning up failed installation', { venvPath });
+                try {
+                    this.fs.rmSync(venvPath, { recursive: true, force: true });
+                } catch (cleanupErr) {
+                    logger.warn('Failed to cleanup venv after installation failure', { error: cleanupErr });
+                }
+            }
+            
             throw error;
         }
     }
@@ -180,9 +270,9 @@ export class SemgrepInstaller {
             : path.join(venv, 'bin', 'pip');
     }
 
-    private exec(command: string): Promise<{ stdout: string; stderr: string }> {
+    private exec(command: string, timeout: number = 30000): Promise<{ stdout: string; stderr: string }> {
         return new Promise((resolve, reject) => {
-            this.execFn(command, (error, stdout, stderr) => {
+            this.execFn(command, { timeout, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) {
                     reject(error);
                 } else {

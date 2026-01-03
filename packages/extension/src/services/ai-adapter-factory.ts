@@ -125,29 +125,58 @@ export async function getOrCreateAIAdapter(): Promise<VercelAIAdapter | null> {
     }
 
     const keyService = getAIKeyService();
+    const config = vscode.workspace.getConfiguration('backbrain.ai');
 
-    // Try providers in priority order
-    for (const provider of PROVIDERS_PRIORITY) {
-        // Check SecretStorage first
-        const apiKey = await keyService.getApiKey(provider);
+    // 1. Try configured provider first
+    const preferredProvider = config.get<string>('provider') as SupportedProvider | undefined;
+    const preferredModel = config.get<string>('model');
+
+    if (preferredProvider) {
+        const apiKey = await keyService.getApiKey(preferredProvider);
         if (apiKey) {
-            const config = createProviderConfig(provider, apiKey);
-            const adapter = new VercelAIAdapter(config);
+            const providerConfig = createProviderConfig(preferredProvider, apiKey, preferredModel || undefined);
+            const adapter = new VercelAIAdapter(providerConfig);
             if (await adapter.isAvailable()) {
                 cachedAdapter = adapter;
-                cachedProvider = provider;
-                logger.info(`Using AI provider: ${provider} (from SecretStorage)`);
+                cachedProvider = preferredProvider;
+                logger.info(`Using preferred AI provider: ${preferredProvider} (from SecretStorage)`);
                 return adapter;
             }
         }
 
-        // Fallback to environment variable
-        const config = createProviderConfig(provider);
-        const adapter = new VercelAIAdapter(config);
+        // Try environment fallback for preferred provider
+        const providerConfig = createProviderConfig(preferredProvider, undefined, preferredModel || undefined);
+        const adapter = new VercelAIAdapter(providerConfig);
+        if (await adapter.isAvailable()) {
+            cachedAdapter = adapter;
+            cachedProvider = preferredProvider;
+            logger.info(`Using preferred AI provider: ${preferredProvider} (from environment)`);
+            return adapter;
+        }
+    }
+
+    // 2. Fallback: Try providers in priority order
+    for (const provider of PROVIDERS_PRIORITY) {
+        if (provider === preferredProvider) continue; // Already tried
+
+        const apiKey = await keyService.getApiKey(provider);
+        if (apiKey) {
+            const providerConfig = createProviderConfig(provider, apiKey);
+            const adapter = new VercelAIAdapter(providerConfig);
+            if (await adapter.isAvailable()) {
+                cachedAdapter = adapter;
+                cachedProvider = provider;
+                logger.info(`Using fallback AI provider: ${provider} (from SecretStorage)`);
+                return adapter;
+            }
+        }
+
+        const providerConfig = createProviderConfig(provider);
+        const adapter = new VercelAIAdapter(providerConfig);
         if (await adapter.isAvailable()) {
             cachedAdapter = adapter;
             cachedProvider = provider;
-            logger.info(`Using AI provider: ${provider} (from environment)`);
+            logger.info(`Using fallback AI provider: ${provider} (from environment)`);
             return adapter;
         }
     }
@@ -188,16 +217,25 @@ async function executeWithFallback<T>(
 
     const keyService = getAIKeyService();
     const triedProviders: SupportedProvider[] = [];
+    const maxRetries = 2;
 
     // Try with current cached adapter first
-    if (cachedAdapter && cachedProvider) {
-        try {
-            return await operation(cachedAdapter);
-        } catch (error) {
-            logger.warn(`${operationName} failed with ${cachedProvider}, trying fallback`, { error });
-            triedProviders.push(cachedProvider);
-            cachedAdapter = null;
-            cachedProvider = null;
+    if (cachedAdapter !== null && cachedProvider !== null) {
+        const adapter = cachedAdapter;
+        const provider = cachedProvider;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                return await operation(adapter);
+            } catch (error) {
+                if (attempt === maxRetries - 1) {
+                    logger.warn(`${operationName} failed with ${provider} after ${maxRetries} attempts`, { error });
+                    triedProviders.push(provider);
+                    cachedAdapter = null;
+                    cachedProvider = null;
+                } else {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                }
+            }
         }
     }
 
@@ -330,11 +368,14 @@ export function clearCaches(): void {
  */
 export function showAIUnavailableMessage(): void {
     vscode.window.showInformationMessage(
-        'AI features require a BackBrain subscription. Visit backbrain.dev to learn more.',
-        'Learn More'
+        'AI features are not configured. Please set an API key or check your settings.',
+        'Set API Key',
+        'Open Settings'
     ).then(selection => {
-        if (selection === 'Learn More') {
-            vscode.env.openExternal(vscode.Uri.parse('https://backbrain.dev'));
+        if (selection === 'Set API Key') {
+            vscode.commands.executeCommand('backbrain.setApiKey');
+        } else if (selection === 'Open Settings') {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'backbrain.ai');
         }
     });
 }

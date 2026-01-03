@@ -1,4 +1,4 @@
-import { CodeIssue } from '../ports/scanner';
+import { CodeIssue } from '../types';
 import { getComplianceInfo, ComplianceInfo } from '../config/compliance-map';
 
 export interface ReportData {
@@ -44,7 +44,7 @@ export class ReportService {
                 severityCounts[severity]++;
             }
 
-            const info = getComplianceInfo(issue.ruleId, customComplianceMap);
+            const info = getComplianceInfo(issue.ruleId || issue.id, customComplianceMap);
 
             // Aggregate compliance stats
             info.owasp?.forEach(id => {

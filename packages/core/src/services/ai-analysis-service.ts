@@ -267,7 +267,7 @@ export class AIAnalysisService {
 
         // Try to extract code blocks as replacement
         const codeMatch = response.match(/```[\w]*\s*([\s\S]*?)\s*```/);
-        const extractedCode = codeMatch ? codeMatch[1].trim() : '';
+        const extractedCode = codeMatch?.[1]?.trim() || '';
 
         // Fallback: provide helpful description with any extracted code
         const fallbackFix: SecurityFix = {

@@ -8,6 +8,7 @@ import { vscode } from './messages';
 import type { IssueData, ExtensionMessage, FixSessionData, FixData } from './messages';
 import { IssueList } from './components/IssueList';
 import { FixHistory } from './components/FixHistory';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/theme.css';
 
 // Register VS Code Web Components
@@ -23,6 +24,7 @@ const App: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [fixHistory, setFixHistory] = useState<FixSessionData[]>([]);
     const [activeFix, setActiveFix] = useState<{ issueId: string; fix: FixData } | null>(null);
+    const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
     // Persist issues whenever they change
     useEffect(() => {
@@ -42,6 +44,18 @@ const App: React.FC = () => {
                 case 'scanComplete':
                     setIssues(message.issues);
                     setLoading(false);
+                    setBatchProgress(null);
+                    break;
+                case 'issuesUpdated':
+                    setIssues(prev => {
+                        // Merge issues, replacing existing ones by ID to avoid duplicates
+                        const issueMap = new Map(prev.map(i => [i.id, i]));
+                        message.issues.forEach(i => issueMap.set(i.id, i));
+                        return Array.from(issueMap.values());
+                    });
+                    if (message.batchInfo) {
+                        setBatchProgress(message.batchInfo);
+                    }
                     break;
                 case 'scanError':
                     setError(message.error);
@@ -81,6 +95,10 @@ const App: React.FC = () => {
         vscode.postMessage({ type: 'requestScan' });
     };
 
+    const handleScanFile = () => {
+        vscode.postMessage({ type: 'requestScanFile' });
+    };
+
     // Calculate issue counts by severity
     const counts = issues.reduce((acc, issue) => {
         acc[issue.severity] = (acc[issue.severity] || 0) + 1;
@@ -88,111 +106,165 @@ const App: React.FC = () => {
     }, {} as Record<string, number>);
 
     return (
-        <div style={{ padding: 'var(--bb-spacing-xl)' }}>
-            {/* Header */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 'var(--bb-spacing-xl)',
-                paddingBottom: 'var(--bb-spacing-lg)',
-                borderBottom: '1px solid var(--bb-color-border)',
-            }}>
-                <h2 style={{
-                    margin: 0,
-                    fontSize: 'var(--bb-font-size-md)',
-                    fontWeight: 'var(--bb-font-weight-semibold)',
-                    color: 'var(--bb-color-foreground)',
-                }}>
-                    Security Issues
-                </h2>
-                <vscode-button
-                    appearance="secondary"
-                    onClick={handleScan}
-                    disabled={loading}
-                >
-                    {loading ? 'Scanning...' : 'Scan Workspace'}
-                </vscode-button>
-                <vscode-button
-                    appearance="icon"
-                    onClick={() => vscode.postMessage({ type: 'exportReport' })}
-                    title="Export Report"
-                    style={{ marginLeft: 'var(--bb-spacing-sm)' }}
-                >
-                    <span className="codicon codicon-export"></span>
-                </vscode-button>
-            </div>
-
-            {/* Summary Badges */}
-            {issues.length > 0 && (
+        <ErrorBoundary>
+            <div style={{ padding: 'var(--bb-spacing-xl)' }}>
+                {/* Header */}
                 <div style={{
                     display: 'flex',
-                    gap: 'var(--bb-spacing-md)',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                     marginBottom: 'var(--bb-spacing-xl)',
-                    flexWrap: 'wrap',
+                    paddingBottom: 'var(--bb-spacing-lg)',
+                    borderBottom: '1px solid var(--bb-color-border)',
                 }}>
-                    {severityOrder.map(severity => {
-                        const count = counts[severity] || 0;
-                        if (count === 0) return null;
-
-                        return (
-                            <span
-                                key={severity}
-                                style={{
-                                    fontSize: 'var(--bb-font-size-sm)',
-                                    padding: 'var(--bb-spacing-xs) var(--bb-spacing-md)',
-                                    borderRadius: 'var(--bb-border-radius-pill)',
-                                    backgroundColor: 'var(--bb-color-badge-bg)',
-                                    color: 'var(--bb-color-badge-fg)',
-                                }}
-                            >
-                                {count} {severity}
-                            </span>
-                        );
-                    })}
-                    <span style={{
-                        fontSize: 'var(--bb-font-size-sm)',
-                        padding: 'var(--bb-spacing-xs) var(--bb-spacing-md)',
-                        borderRadius: 'var(--bb-border-radius-pill)',
-                        backgroundColor: 'var(--bb-color-background-secondary)',
+                    <h2 style={{
+                        margin: 0,
+                        fontSize: 'var(--bb-font-size-md)',
+                        fontWeight: 'var(--bb-font-weight-semibold)',
                         color: 'var(--bb-color-foreground)',
-                        marginLeft: 'auto',
                     }}>
-                        Total: {issues.length}
-                    </span>
+                        Security Issues
+                    </h2>
+                    <vscode-button
+                        appearance="secondary"
+                        onClick={handleScanFile}
+                        disabled={loading || undefined}
+                        style={{ marginRight: 'var(--bb-spacing-sm)' }}
+                    >
+                        File
+                    </vscode-button>
+                    <vscode-button
+                        appearance="primary"
+                        onClick={handleScan}
+                        disabled={loading || undefined}
+                    >
+                        Workspace
+                    </vscode-button>
+                    <vscode-button
+                        appearance="icon"
+                        onClick={() => vscode.postMessage({ type: 'exportReport' })}
+                        title="Export Report"
+                        style={{ marginLeft: 'var(--bb-spacing-sm)' }}
+                    >
+                        <span className="codicon codicon-export"></span>
+                    </vscode-button>
                 </div>
-            )}
 
-            {/* Error Display */}
-            {error && (
-                <div style={{
-                    padding: 'var(--bb-spacing-lg)',
-                    marginBottom: 'var(--bb-spacing-xl)',
-                    borderRadius: 'var(--bb-border-radius-md)',
-                    backgroundColor: 'var(--bb-color-error-bg)',
-                    color: 'var(--bb-color-error)',
-                    border: '1px solid var(--bb-color-error)',
-                }}>
-                    <strong>Scan Error:</strong> {error}
-                </div>
-            )}
+                {/* Summary Badges */}
+                {issues.length > 0 && (
+                    <div style={{
+                        display: 'flex',
+                        gap: 'var(--bb-spacing-md)',
+                        marginBottom: 'var(--bb-spacing-xl)',
+                        flexWrap: 'wrap',
+                    }}>
+                        {severityOrder.map(severity => {
+                            const count = counts[severity] || 0;
+                            if (count === 0) return null;
 
-            {/* Issue List */}
-            <IssueList
-                issues={issues}
-                loading={loading}
-                activeFix={activeFix}
-                onClearActiveFix={() => setActiveFix(null)}
-            />
+                            return (
+                                <span
+                                    key={severity}
+                                    style={{
+                                        fontSize: 'var(--bb-font-size-sm)',
+                                        padding: 'var(--bb-spacing-xs) var(--bb-spacing-md)',
+                                        borderRadius: 'var(--bb-border-radius-pill)',
+                                        backgroundColor: 'var(--bb-color-badge-bg)',
+                                        color: 'var(--bb-color-badge-fg)',
+                                    }}
+                                >
+                                    {count} {severity}
+                                </span>
+                            );
+                        })}
+                        <span style={{
+                            fontSize: 'var(--bb-font-size-sm)',
+                            padding: 'var(--bb-spacing-xs) var(--bb-spacing-md)',
+                            borderRadius: 'var(--bb-border-radius-pill)',
+                            backgroundColor: 'var(--bb-color-background-secondary)',
+                            color: 'var(--bb-color-foreground)',
+                            marginLeft: 'auto',
+                        }}>
+                            Total: {issues.length}
+                        </span>
+                    </div>
+                )}
 
-            {/* Fix History */}
-            <div style={{ marginTop: 'var(--bb-spacing-xl)' }}>
-                <FixHistory
-                    sessions={fixHistory}
-                    onRevert={(sessionId) => vscode.postMessage({ type: 'revertFix', sessionId })}
+                {/* Batch Progress */}
+                {batchProgress && (
+                    <div style={{
+                        marginBottom: 'var(--bb-spacing-md)',
+                        padding: 'var(--bb-spacing-sm)',
+                        backgroundColor: 'var(--bb-color-background-secondary)',
+                        borderRadius: 'var(--bb-border-radius-md)',
+                    }}>
+                        <div style={{
+                            fontSize: 'var(--bb-font-size-sm)',
+                            color: 'var(--bb-color-foreground)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: 'var(--bb-spacing-xs)'
+                        }}>
+                            <span>Scanning workspace...</span>
+                            <span>{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
+                        </div>
+                        <div style={{
+                            width: '100%',
+                            height: '4px',
+                            backgroundColor: 'var(--bb-color-border)',
+                            borderRadius: '2px',
+                            overflow: 'hidden'
+                        }}>
+                            <div style={{
+                                width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                                height: '100%',
+                                backgroundColor: 'var(--bb-color-badge-bg)',
+                                transition: 'width 0.3s ease'
+                            }} />
+                        </div>
+                        <div style={{
+                            fontSize: 'var(--bb-font-size-xs)',
+                            color: 'var(--bb-color-foreground-secondary)',
+                            marginTop: 'var(--bb-spacing-xs)',
+                            textAlign: 'right'
+                        }}>
+                            {batchProgress.current} / {batchProgress.total} files
+                        </div>
+                    </div>
+                )}
+
+
+                {/* Error Display */}
+                {error && (
+                    <div style={{
+                        padding: 'var(--bb-spacing-lg)',
+                        marginBottom: 'var(--bb-spacing-xl)',
+                        borderRadius: 'var(--bb-border-radius-md)',
+                        backgroundColor: 'var(--bb-color-error-bg)',
+                        color: 'var(--bb-color-error)',
+                        border: '1px solid var(--bb-color-error)',
+                    }}>
+                        <strong>Scan Error:</strong> {error}
+                    </div>
+                )}
+
+                {/* Issue List */}
+                <IssueList
+                    issues={issues}
+                    loading={loading}
+                    activeFix={activeFix}
+                    onClearActiveFix={() => setActiveFix(null)}
                 />
+
+                {/* Fix History */}
+                <div style={{ marginTop: 'var(--bb-spacing-xl)' }}>
+                    <FixHistory
+                        sessions={fixHistory}
+                        onRevert={(sessionId) => vscode.postMessage({ type: 'revertFix', sessionId })}
+                    />
+                </div>
             </div>
-        </div>
+        </ErrorBoundary>
     );
 };
 

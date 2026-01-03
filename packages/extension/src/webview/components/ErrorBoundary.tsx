@@ -1,58 +1,37 @@
-import { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
     children: ReactNode;
+    fallback?: ReactNode;
 }
 
 interface State {
     hasError: boolean;
-    error: Error | null;
+    error?: Error;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-    public state: State = {
-        hasError: false,
-        error: null
-    };
+    constructor(props: Props) {
+        super(props);
+        this.state = { hasError: false };
+    }
 
-    public static getDerivedStateFromError(error: Error): State {
-        // Update state so the next render will show the fallback UI.
+    static getDerivedStateFromError(error: Error): State {
         return { hasError: true, error };
     }
 
-    public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error('Uncaught error:', error, errorInfo);
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error('ErrorBoundary caught:', error, errorInfo);
     }
 
-    public render() {
+    render() {
         if (this.state.hasError) {
-            return (
-                <div style={{
-                    padding: '20px',
-                    color: 'var(--vscode-errorForeground)',
-                    background: 'var(--vscode-input-background)',
-                    border: '1px solid var(--vscode-errorForeground)',
-                    borderRadius: '4px',
-                    margin: '10px'
-                }}>
-                    <h2>Something went wrong.</h2>
-                    <p>The BackBrain UI encountered an unexpected error.</p>
-                    <details style={{ whiteSpace: 'pre-wrap', marginTop: '10px', fontSize: '12px' }}>
-                        {this.state.error && this.state.error.toString()}
-                    </details>
-                    <button
-                        onClick={() => window.location.reload()}
-                        style={{
-                            marginTop: '15px',
-                            padding: '8px 12px',
-                            background: 'var(--vscode-button-background)',
-                            color: 'var(--vscode-button-foreground)',
-                            border: 'none',
-                            borderRadius: '2px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Reload UI
+            return this.props.fallback || (
+                <div style={{ padding: '20px', color: 'var(--vscode-errorForeground)' }}>
+                    <h3>Something went wrong</h3>
+                    <p>{this.state.error?.message}</p>
+                    <button onClick={() => this.setState({ hasError: false })}>
+                        Try again
                     </button>
                 </div>
             );
