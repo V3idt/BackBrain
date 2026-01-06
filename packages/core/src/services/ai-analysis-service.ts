@@ -118,7 +118,7 @@ export class AIAnalysisService {
             return response.content;
         } catch (error) {
             logger.error('Failed to explain issue', { error });
-            throw new Error(`AI explanation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw error; // Re-throw the original error to preserve rich metadata
         }
     }
 
@@ -187,7 +187,7 @@ export class AIAnalysisService {
             return fix;
         } catch (error) {
             logger.error('Failed to suggest fix', { error });
-            throw new Error(`AI fix suggestion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw error; // Re-throw the original error to preserve rich metadata
         }
     }
 

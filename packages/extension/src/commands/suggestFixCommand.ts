@@ -14,6 +14,7 @@ import {
     getRateLimitCooldown,
     showAIUnavailableMessage,
     getOrCreateAIAdapter,
+    getActiveProvider,
 } from '../services/ai-adapter-factory';
 
 const logger = createLogger('SuggestFixCommand');
@@ -149,13 +150,66 @@ export function registerSuggestFixCommand(context: vscode.ExtensionContext): vsc
                     return fix;
 
                 } catch (error) {
-                    logger.error('Failed to suggest fix', { error });
-                    vscode.window.showErrorMessage(
-                        `Failed to suggest fix: ${error instanceof Error ? error.message : 'Unknown error'}`
-                    );
+                    const provider = getActiveProvider() || 'unknown';
+                    const errorDetail = extractErrorMessage(error);
+                    logger.error('Failed to suggest fix', { error, provider });
+
+                    let toastMsg = `AI fix suggestion failed (${provider}): ${errorDetail}`;
+
+                    if (errorDetail.includes('429') || errorDetail.toLowerCase().includes('quota')) {
+                        toastMsg = `AI Provider (${provider}) Quota Exceeded. Please check your plan or try again later.`;
+                    } else if (errorDetail.includes('404')) {
+                        toastMsg = `AI Provider (${provider}) Model Not Found. Your model name might be incorrect.`;
+                    }
+
+                    vscode.window.showErrorMessage(toastMsg);
                     return undefined;
                 }
             }
         );
     });
+}
+/**
+ * Extract a user-friendly error message from potentially complex/nested AI error objects
+ */
+function extractErrorMessage(error: any): string {
+    if (!error) return 'Unknown error';
+
+    // 1. Handle string errors
+    if (typeof error === 'string') return error;
+
+    // 2. Handle AI_RetryError (contains a list of errors)
+    if (error.name === 'AI_RetryError' && Array.isArray(error.errors) && error.errors.length > 0) {
+        return extractErrorMessage(error.errors[error.errors.length - 1]);
+    }
+
+    // 3. Check for status codes directly (often on AI_APICallError)
+    const statusCode = error.statusCode || error.status || error.data?.error?.code;
+    if (statusCode === 429) return 'Quota exceeded (Rate limit reached). Please check your plan or try again later.';
+    if (statusCode === 404) return 'Model not found. Please verify the model name in settings.';
+
+    // 4. Handle AI_APICallError or similar SDK errors with data
+    if (error.data?.error?.message) {
+        return error.data.error.message;
+    }
+
+    // 5. Handle response bodies that might contain error JSON
+    if (error.responseBody) {
+        try {
+            const parsed = JSON.parse(error.responseBody);
+            if (parsed.error?.message) return parsed.error.message;
+        } catch {
+            // Not JSON or no message, continue
+        }
+    }
+
+    // 6. Handle standard Error objects or objects with message property
+    if (error.message) return error.message;
+
+    // 7. Fallback to stringified object
+    try {
+        return JSON.stringify(error);
+    } catch {
+        return String(error);
+    }
 }

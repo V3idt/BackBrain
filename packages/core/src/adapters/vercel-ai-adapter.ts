@@ -162,8 +162,17 @@ export class VercelAIAdapter implements AIProvider {
             }
 
             return response;
-        } catch (error) {
-            logger.error('Completion failed', { error });
+        } catch (error: any) {
+            logger.error('Completion failed', {
+                error: {
+                    name: error.name,
+                    message: error.message,
+                    status: error.status,
+                    data: error.data
+                },
+                provider: this.config.provider,
+                model: this.config.model
+            });
             throw error;
         }
     }
@@ -206,8 +215,17 @@ export class VercelAIAdapter implements AIProvider {
             }
 
             logger.debug('Streaming completed');
-        } catch (error) {
-            logger.error('Streaming failed', { error });
+        } catch (error: any) {
+            logger.error('Streaming failed', {
+                error: {
+                    name: error.name,
+                    message: error.message,
+                    status: error.status,
+                    data: error.data
+                },
+                provider: this.config.provider,
+                model: this.config.model
+            });
             throw error;
         }
     }

@@ -91,7 +91,7 @@
         },
         "backbrain.ai.model": {
           "type": "string",
-          "default": "gpt-4o",
+          "default": "",
           "description": "Model to use for the selected provider (leave empty for default)"
         },
         "backbrain.ai.contextLines": {
