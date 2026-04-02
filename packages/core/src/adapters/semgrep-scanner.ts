@@ -4,9 +4,6 @@ import { createLogger } from '../utils/logger';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
-
-
-
 const logger = createLogger('SemgrepScanner');
 
 interface SemgrepFinding {
@@ -92,9 +89,37 @@ export class SemgrepScanner implements SecurityScanner {
         scannerInfo: 'Semgrep',
       };
     } catch (error) {
+      if (this.isRemoteConfigFailure(error)) {
+        logger.warn('Semgrep auto config unavailable, skipping scan', {
+          error: toError(error),
+        });
+        return {
+          issues: [],
+          scannedFiles: paths,
+          scanDurationMs: Date.now() - startTime,
+          scannerInfo: 'Semgrep (auto config unavailable)',
+        };
+      }
+
       logger.error('Semgrep scan failed', { error: toError(error) });
       throw error;
     }
+  }
+
+  private isRemoteConfigFailure(error: unknown): boolean {
+    const message = error instanceof Error
+      ? [error.message, (error as any).stderr, (error as any).stdout].filter(Boolean).join('\n').toLowerCase()
+      : String(error).toLowerCase();
+
+    return (
+      message.includes('semgrep.dev') ||
+      message.includes('httpsconnectionpool') ||
+      message.includes('max retries exceeded') ||
+      message.includes('name resolution') ||
+      message.includes('temporary failure in name resolution') ||
+      message.includes('connectionerror') ||
+      message.includes('/c/auto')
+    );
   }
 
   private parseFindings(findings: SemgrepFinding[]): SecurityIssue[] {
