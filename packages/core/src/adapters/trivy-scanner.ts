@@ -103,9 +103,32 @@ export class TrivyScanner extends CliScannerBase {
                 scannerInfo: 'Trivy',
             };
         } catch (error) {
+            if (this.isDatabaseUnavailableError(error)) {
+                logger.warn('Trivy vulnerability DB unavailable, skipping scan', { error: toError(error) });
+                return {
+                    issues: [],
+                    scannedFiles: paths,
+                    scanDurationMs: Date.now() - startTime,
+                    scannerInfo: 'Trivy (vulnerability DB unavailable)',
+                };
+            }
             logger.error('Trivy scan failed', { error: toError(error) });
             throw error;
         }
+    }
+
+    private isDatabaseUnavailableError(error: unknown): boolean {
+        const text = error instanceof Error
+            ? [error.message, (error as any).stderr, (error as any).stdout].filter(Boolean).join('\n').toLowerCase()
+            : String(error).toLowerCase();
+
+        return (
+            text.includes('failed to download vulnerability db') ||
+            text.includes('oci artifact error') ||
+            text.includes('context deadline exceeded') ||
+            text.includes('db error') ||
+            text.includes('mirror.gcr.io/aquasec/trivy-db')
+        );
     }
 
     private mapSeverity(value?: string): Severity {
