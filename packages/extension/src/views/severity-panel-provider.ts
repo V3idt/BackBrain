@@ -11,6 +11,8 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _issues: IssueData[] = [];
     private _isScanning = false;
+    private _lastScanError: string | null = null;
+    private _lastBatchProgress: { current: number; total: number } | null = null;
     private _scanCancelTokenSource?: vscode.CancellationTokenSource;
 
     constructor(
@@ -23,6 +25,9 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
      */
     public showIssues(issues: any[]): void {
         const issueData: IssueData[] = issues.map(issue => toIssueData(issue));
+        this._issues = issueData;
+        this._lastScanError = null;
+        this._lastBatchProgress = null;
         this._postMessage({ type: 'scanComplete', issues: issueData });
 
         // Focus the view if it exists
@@ -69,6 +74,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
             switch (message.type) {
                 case 'ready':
                     logger.debug('Webview is ready');
+                    this._syncStateToWebview();
                     break;
 
                 case 'requestScan':
@@ -133,6 +139,8 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         }
 
         this._isScanning = true;
+        this._lastScanError = null;
+        this._lastBatchProgress = null;
         this._scanCancelTokenSource = new vscode.CancellationTokenSource();
         const token = this._scanCancelTokenSource.token;
 
@@ -233,6 +241,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
                     issues: newIssues,
                     batchInfo: { current: scannedCount, total: totalFiles }
                 });
+                this._lastBatchProgress = { current: scannedCount, total: totalFiles };
 
                 // Yield to keep event loop responsive
                 await new Promise(resolve => setTimeout(resolve, 5));
@@ -245,6 +254,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             logger.error('Scan failed', { error });
             const errorMessage = error instanceof Error ? error.message : String(error);
+            this._lastScanError = errorMessage;
             this._postMessage({ type: 'scanError', error: errorMessage });
         } finally {
             this._isScanning = false;
@@ -439,6 +449,28 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
     private _postMessage(message: { type: string;[key: string]: unknown }): void {
         if (this._view) {
             this._view.webview.postMessage(message);
+        }
+    }
+
+    private _syncStateToWebview(): void {
+        if (this._isScanning) {
+            this._postMessage({ type: 'scanStarted' });
+        }
+        if (this._issues.length > 0) {
+            if (this._lastBatchProgress) {
+                this._postMessage({
+                    type: 'issuesUpdated',
+                    issues: this._issues,
+                    batchInfo: this._lastBatchProgress,
+                });
+            } else {
+                this._postMessage({ type: 'scanComplete', issues: this._issues });
+            }
+        } else if (!this._isScanning && !this._lastScanError) {
+            this._postMessage({ type: 'scanComplete', issues: [] });
+        }
+        if (this._lastScanError) {
+            this._postMessage({ type: 'scanError', error: this._lastScanError });
         }
     }
 
