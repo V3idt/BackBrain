@@ -25,6 +25,7 @@ These are the security-related branches that were actually present in this Rust 
 | Branch | Tip commit | Summary |
 |---|---|---|
 | `security-features` | `a27dc048e` | main working branch for the prototype; includes Semgrep command, dependency planner history, docs, and later handoff notes |
+| `security-feature-aiscanner` | `15364289f` | agentic security scanner workflow branch; adds repo-context gathering, prompts, and agent-driven scan orchestration around Semgrep |
 | `security-scan-dependencies` | `0e1b398bb` | dependency-vulnerability planning work for `osv-scanner`, `cargo-audit`, and `npm audit` |
 | `security-scan-gitleaks` | `59a87bacc` | Gitleaks integration branch |
 | `security-scan-trivy` | `531db47ab` | stale branch; despite the name, it does not contain real Trivy implementation |
@@ -37,8 +38,8 @@ Related TypeScript codebase:
 
 Important note:
 
-- I did not find an additional Rust branch explicitly named for AI scanning beyond the branches above.
-- The AI-related implementation that now matters most is in `../BackBrain`, especially its `packages/core` and `packages/extension` code.
+- There is a Rust branch explicitly focused on AI-assisted security scanning: `origin/security-feature-aiscanner`.
+- The AI-related implementation that now matters most for the final product is still in `../BackBrain`, especially its `packages/core` and `packages/extension` code.
 
 ## High-Level Lessons
 
@@ -180,6 +181,32 @@ Useful ideas from this branch:
 - preserve raw JSON
 - add a dedicated CLI path for secrets scanning
 
+### `security-feature-aiscanner`
+
+Primary contribution:
+
+- an agentic security-scanner workflow layered on top of deterministic Semgrep execution
+
+Main pieces added on that branch:
+
+- `codex-rs/security-scan/src/agentic.rs`
+- `codex-rs/security-scan/src/prompts.rs`
+- `codex-rs/security-scan/src/repo_context.rs`
+- `codex-rs/security-scan/src/types.rs`
+- a refactored `codex-rs/security-scan/src/semgrep.rs`
+
+What that branch was trying to do:
+
+- gather repository context before scanning
+- define prompts and types for AI-assisted security analysis
+- keep Semgrep as the underlying deterministic scanner
+- add an agent-driven layer for orchestration and interpretation
+
+Why it matters:
+
+- it is the clearest prototype of the “deterministic scanners first, AI triage second” direction
+- it should influence the TypeScript rewrite even if the Rust implementation itself is not the final product
+
 Why it was not merged wholesale:
 
 - it reintroduced the in-repo `security-fixtures/` directory after the user had asked to remove that approach
@@ -320,7 +347,8 @@ Useful part to keep:
 
 ### AI-Related Work
 
-- No separate Rust branch dedicated to AI scan orchestration was present in this repo at the time of review.
+- There is a separate Rust branch dedicated to AI scan orchestration: `origin/security-feature-aiscanner` at `15364289f`.
+- That branch adds an agentic workflow on top of Semgrep rather than replacing deterministic scanning.
 - The meaningful AI implementation that should influence future work is in `../BackBrain`.
 - In practice, the TypeScript rewrite should combine:
   - deterministic scanners inspired by the Rust prototype

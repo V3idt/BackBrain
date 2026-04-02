@@ -4,7 +4,7 @@
 
 import { describe, expect, it, mock, beforeEach } from 'bun:test';
 import { VercelAIAdapter, createAIAdapter } from '../../packages/core/src/adapters/vercel-ai-adapter';
-import type { AIProviderConfig } from '../../packages/core/src/config/ai-config';
+import { createProviderConfig, type AIProviderConfig } from '../../packages/core/src/config/ai-config';
 
 describe('VercelAIAdapter', () => {
     describe('constructor', () => {
@@ -19,8 +19,8 @@ describe('VercelAIAdapter', () => {
         });
 
         it('should create adapter for each supported provider', () => {
-            const providers: Array<'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek'> = [
-                'openai', 'anthropic', 'google', 'xai', 'deepseek'
+            const providers: Array<'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'openrouter'> = [
+                'openai', 'anthropic', 'google', 'xai', 'deepseek', 'openrouter'
             ];
 
             for (const provider of providers) {
@@ -112,6 +112,7 @@ describe('createAIAdapter', () => {
             google: 'gemini-2.0-flash',
             xai: 'grok-3',
             deepseek: 'deepseek-chat',
+            openrouter: 'openai/gpt-4o-mini',
         };
 
         for (const [provider, expectedModel] of Object.entries(expectedModels)) {
@@ -119,5 +120,12 @@ describe('createAIAdapter', () => {
             const config = adapter.getConfig();
             expect(config.model).toBe(expectedModel);
         }
+    });
+
+    it('should assign the OpenRouter base URL automatically', () => {
+        const config = createProviderConfig('openrouter', 'test-key');
+
+        expect(config.baseUrl).toBe('https://openrouter.ai/api/v1');
+        expect(config.model).toBe('openai/gpt-4o-mini');
     });
 });

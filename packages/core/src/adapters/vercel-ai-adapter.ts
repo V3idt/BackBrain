@@ -2,7 +2,7 @@
  * Vercel AI SDK Adapter
  * 
  * Unified adapter implementing our AIProvider port using Vercel AI SDK.
- * Supports OpenAI, Anthropic, Google, xAI, and DeepSeek out of the box.
+ * Supports OpenAI, Anthropic, Google, xAI, DeepSeek, and OpenRouter out of the box.
  */
 
 import { generateText, streamText, type CoreMessage } from 'ai';
@@ -16,6 +16,7 @@ import type { AIProvider, AIContext, AIResponse } from '../ports';
 import {
     type AIProviderConfig,
     type SupportedProvider,
+    createProviderConfig,
     getApiKey,
     hasApiKey,
     DEFAULT_MODELS,
@@ -69,6 +70,7 @@ export class VercelAIAdapter implements AIProvider {
         try {
             switch (this.config.provider) {
                 case 'openai':
+                case 'openrouter':
                     this.providerFactory = createOpenAI(settings);
                     break;
                 case 'anthropic':
@@ -268,21 +270,14 @@ export function createAIAdapter(
     apiKey?: string,
     model?: string
 ): VercelAIAdapter {
-    const config: AIProviderConfig = {
-        provider,
-        model: model || DEFAULT_MODELS[provider],
-    };
-    if (apiKey !== undefined) {
-        config.apiKey = apiKey;
-    }
-    return new VercelAIAdapter(config);
+    return new VercelAIAdapter(createProviderConfig(provider, apiKey, model));
 }
 
 /**
  * Create adapters for all providers with available API keys
  */
 export function createAllAvailableAdapters(): Map<SupportedProvider, VercelAIAdapter> {
-    const providers: SupportedProvider[] = ['openai', 'anthropic', 'google', 'xai', 'deepseek'];
+    const providers: SupportedProvider[] = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'openrouter'];
     const adapters = new Map<SupportedProvider, VercelAIAdapter>();
 
     for (const provider of providers) {

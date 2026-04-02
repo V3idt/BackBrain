@@ -84,7 +84,8 @@
             "anthropic",
             "google",
             "xai",
-            "deepseek"
+            "deepseek",
+            "openrouter"
           ],
           "default": "openai",
           "description": "Selected AI provider for explanations and fix suggestions"

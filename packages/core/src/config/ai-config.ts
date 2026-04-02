@@ -8,7 +8,7 @@
 /**
  * Supported AI providers via Vercel AI SDK
  */
-export type SupportedProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek';
+export type SupportedProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'openrouter';
 
 /**
  * Configuration for an AI provider
@@ -34,6 +34,7 @@ export const DEFAULT_MODELS: Record<SupportedProvider, string> = {
     google: 'gemini-2.0-flash',
     xai: 'grok-3',
     deepseek: 'deepseek-chat',
+    openrouter: 'openai/gpt-4o-mini',
 };
 
 /**
@@ -46,6 +47,14 @@ export const API_KEY_ENV_VARS: Record<SupportedProvider, string> = {
     google: 'GOOGLE_GENERATIVE_AI_API_KEY',
     xai: 'XAI_API_KEY',
     deepseek: 'DEEPSEEK_API_KEY',
+    openrouter: 'OPENROUTER_API_KEY',
+};
+
+/**
+ * Default base URLs for providers that require a non-standard endpoint.
+ */
+export const DEFAULT_BASE_URLS: Partial<Record<SupportedProvider, string>> = {
+    openrouter: 'https://openrouter.ai/api/v1',
 };
 
 /**
@@ -73,8 +82,9 @@ export function createProviderConfig(
     if (apiKey !== undefined) {
         config.apiKey = apiKey;
     }
-    if (baseUrl !== undefined) {
-        config.baseUrl = baseUrl;
+    const resolvedBaseUrl = baseUrl ?? DEFAULT_BASE_URLS[provider];
+    if (resolvedBaseUrl !== undefined) {
+        config.baseUrl = resolvedBaseUrl;
     }
     return config;
 }
@@ -140,4 +150,3 @@ export function getApiKey(config: AIProviderConfig): string | undefined {
     const envVar = API_KEY_ENV_VARS[config.provider];
     return envProvider.getEnv(envVar);
 }
-
