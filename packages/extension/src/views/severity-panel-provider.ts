@@ -40,6 +40,10 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         return this._issues || [];
     }
 
+    public async startWorkspaceScan(): Promise<void> {
+        await this._handleScanRequest();
+    }
+
     public async resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
