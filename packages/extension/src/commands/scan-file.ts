@@ -38,8 +38,8 @@ export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri) {
       const content = await ctx.fileSystem.readFile(filePath);
       const result = await ctx.securityService.scanFile(filePath, content);
 
-      // Update the Severity Panel with the new results
-      ctx.severityPanelProvider.showIssues(result.issues);
+      // Merge the file scan result into the existing dashboard state
+      ctx.severityPanelProvider.updateFileIssues(filePath, result.issues);
 
       const critical = result.issues.filter((i: CodeIssue) => i.severity === 'critical').length;
       const high = result.issues.filter((i: CodeIssue) => i.severity === 'high').length;

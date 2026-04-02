@@ -36,6 +36,17 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    public updateFileIssues(filePath: string, issues: any[]): void {
+        const issueData: IssueData[] = issues.map(issue => toIssueData(issue));
+        this._issues = [
+            ...this._issues.filter(issue => issue.filePath !== filePath),
+            ...issueData,
+        ];
+        this._lastScanError = null;
+        this._lastBatchProgress = null;
+        this._postMessage({ type: 'scanComplete', issues: this._issues });
+    }
+
     public getIssues(): IssueData[] {
         return this._issues || [];
     }
