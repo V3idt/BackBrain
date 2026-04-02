@@ -412,4 +412,57 @@ describe('CliAgentReviewScanner', () => {
         const available = await scanner.isAvailable();
         expect(available).toBe(true);
     });
+
+    it('should prefer the configured backend when multiple are available', async () => {
+        const calls: string[] = [];
+        const execMock = (cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
+
+            calls.push(cmd);
+
+            if (cmd === 'codex --version' || cmd === 'opencode --version') {
+                callback(null, '1.0.0', '');
+                return { on: () => { } };
+            }
+
+            if (cmd.includes('codex exec')) {
+                callback(null, JSON.stringify({ ready: true }), '');
+                return { on: () => { } };
+            }
+
+            if (cmd.includes('opencode run')) {
+                callback(null, JSON.stringify({ ready: true }), '');
+                return { on: () => { } };
+            }
+
+            callback(new Error(`Unexpected command: ${cmd}`), '', '');
+            return { on: () => { } };
+        };
+
+        (execMock as any)[promisify.custom] = (cmd: string, options?: any) => new Promise((resolve, reject) => {
+            execMock(cmd, options, (error: Error | null, stdout: string, stderr: string) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve({ stdout, stderr });
+            });
+        });
+
+        const scanner = new CliAgentReviewScanner({
+            execFn: execMock as any,
+            preferredBackend: 'codex',
+            backends: {
+                codex: { enabled: true, binaryPath: 'codex' },
+                gemini: { enabled: false },
+                opencode: { enabled: true, binaryPath: 'opencode' },
+            },
+        });
+
+        await scanner.isAvailable();
+        const readinessCalls = calls.filter(cmd => cmd.includes('exec') || cmd.includes('run'));
+        expect(readinessCalls[0]).toContain('codex exec');
+    });
 });

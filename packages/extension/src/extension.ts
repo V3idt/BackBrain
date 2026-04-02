@@ -118,6 +118,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration('backbrain');
     const aiReviewEnabled = config.get<boolean>('ai.agentReviewEnabled', false);
     const enabledAgentBackends = config.get<string[]>('ai.agentBackends', ['codex', 'gemini', 'opencode']);
+    const preferredAgentBackend = config.get<'codex' | 'gemini' | 'opencode'>('ai.agentPreferredBackend', 'codex');
     const maxAgentSpecialists = config.get<number>('ai.maxAgentSpecialists', 6);
     const agentSpecialistConcurrency = config.get<number>('ai.agentSpecialistConcurrency', 3);
     const agentReviewScope = config.get<'workspace' | 'changed-files' | 'both'>('ai.agentReviewScope', 'both');
@@ -126,14 +127,23 @@ export async function activate(context: vscode.ExtensionContext) {
       gemini: config.get<string>('ai.agentBinaryPathGemini', '').trim(),
       opencode: config.get<string>('ai.agentBinaryPathOpencode', '').trim(),
     };
+    const agentModelOverrides = {
+      codex: config.get<string>('ai.agentCodexModel', '').trim(),
+      gemini: '',
+      opencode: '',
+    };
     logger.info('AI agent review configuration', {
       enabled: aiReviewEnabled,
       backends: enabledAgentBackends,
+      preferredBackend: preferredAgentBackend,
       maxSpecialists: maxAgentSpecialists,
       specialistConcurrency: agentSpecialistConcurrency,
       reviewScope: agentReviewScope,
       binaryPathOverrides: Object.fromEntries(
         Object.entries(agentBinaryPaths).map(([key, value]) => [key, Boolean(value)])
+      ),
+      modelOverrides: Object.fromEntries(
+        Object.entries(agentModelOverrides).map(([key, value]) => [key, Boolean(value)])
       ),
     });
 
@@ -148,10 +158,12 @@ export async function activate(context: vscode.ExtensionContext) {
         maxSpecialists: maxAgentSpecialists,
         specialistConcurrency: agentSpecialistConcurrency,
         reviewScope: agentReviewScope,
+        preferredBackend: preferredAgentBackend,
         backends: {
           codex: {
             enabled: enabledAgentBackends.includes('codex'),
             ...(agentBinaryPaths.codex ? { binaryPath: agentBinaryPaths.codex } : {}),
+            ...(agentModelOverrides.codex ? { model: agentModelOverrides.codex } : {}),
           },
           gemini: {
             enabled: enabledAgentBackends.includes('gemini'),

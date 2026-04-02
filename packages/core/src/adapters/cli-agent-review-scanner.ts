@@ -41,6 +41,7 @@ export interface CliAgentReviewScannerOptions {
     maxSpecialists?: number;
     specialistConcurrency?: number;
     reviewScope?: 'workspace' | 'changed-files' | 'both';
+    preferredBackend?: AgentBackendId;
     backends?: Partial<Record<AgentBackendId, Partial<AgentBackendConfig>>>;
 }
 
@@ -94,6 +95,7 @@ export class CliAgentReviewScanner implements SecurityScanner {
     private readonly maxSpecialists: number;
     private readonly specialistConcurrency: number;
     private readonly reviewScope: 'workspace' | 'changed-files' | 'both';
+    private readonly preferredBackend: AgentBackendId | undefined;
     private readonly backends: Record<AgentBackendId, AgentBackendConfig>;
     private readonly readinessCache = new Map<AgentBackendId, BackendReadinessState>();
 
@@ -102,6 +104,7 @@ export class CliAgentReviewScanner implements SecurityScanner {
         this.maxSpecialists = Math.max(1, options.maxSpecialists ?? 6);
         this.specialistConcurrency = Math.max(1, options.specialistConcurrency ?? 3);
         this.reviewScope = options.reviewScope ?? 'both';
+        this.preferredBackend = options.preferredBackend;
         this.backends = {
             codex: {
                 enabled: true,
@@ -321,6 +324,14 @@ export class CliAgentReviewScanner implements SecurityScanner {
                     diagnostics: readiness.diagnostics,
                 });
             }
+        }
+
+        if (this.preferredBackend) {
+            available.sort((left, right) => {
+                if (left.id === this.preferredBackend) return -1;
+                if (right.id === this.preferredBackend) return 1;
+                return 0;
+            });
         }
 
         return available;
