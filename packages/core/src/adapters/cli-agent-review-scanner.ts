@@ -291,13 +291,13 @@ export class CliAgentReviewScanner implements SecurityScanner {
 
         switch (backend.id) {
             case 'codex':
-                command = `${backend.config.binaryPath} exec --sandbox read-only --ask-for-approval never ${quotedPrompt}`;
+                command = `${backend.config.binaryPath} exec --sandbox read-only --skip-git-repo-check ${quotedPrompt}`;
                 break;
             case 'gemini':
                 command = `${backend.config.binaryPath} --approval-mode plan --output-format json --prompt ${quotedPrompt}`;
                 break;
             case 'opencode':
-                command = `${backend.config.binaryPath} run --print-logs --prompt ${quotedPrompt}`;
+                command = `${backend.config.binaryPath} run --print-logs --format json ${quotedPrompt}`;
                 break;
         }
 
