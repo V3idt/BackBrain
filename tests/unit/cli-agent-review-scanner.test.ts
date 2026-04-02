@@ -332,4 +332,84 @@ describe('CliAgentReviewScanner', () => {
 
         expect(active.max).toBe(2);
     });
+
+    it('should pass a codex model override into the codex command', async () => {
+        const { execMock, calls } = createExecMock();
+        const scanner = new CliAgentReviewScanner({
+            execFn: execMock as any,
+            backends: {
+                codex: { enabled: true, binaryPath: 'codex', model: 'gpt-5-codex' },
+                gemini: { enabled: false },
+                opencode: { enabled: false },
+            },
+        });
+
+        await scanner.scanWithContext(['/repo/app.py'], {
+            repositoryRoot: '/repo',
+            deterministicIssues: [],
+            changedFiles: [],
+        });
+
+        const plannerCall = calls.find(cmd => cmd.includes('codex exec') && cmd.includes('--model "gpt-5-codex"'));
+        expect(plannerCall).toBeDefined();
+    });
+
+    it('should normalize codex output that prefixes json with plain text', async () => {
+        let codexExecCount = 0;
+        const execMock = (cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
+
+            if (cmd === 'codex --version') {
+                callback(null, '1.0.0', '');
+                return { on: () => { } };
+            }
+
+            if (cmd.includes('codex exec')) {
+                codexExecCount += 1;
+
+                if (codexExecCount === 1) {
+                    callback(null, 'Ready check complete\n{"ready":true}', '');
+                    return { on: () => { } };
+                }
+
+                if (codexExecCount === 2) {
+                    callback(null, JSON.stringify({
+                        repoSummary: 'repo',
+                        specialists: [],
+                    }), '');
+                    return { on: () => { } };
+                }
+
+                callback(null, JSON.stringify({ findings: [] }), '');
+                return { on: () => { } };
+            }
+
+            callback(new Error(`Unexpected command: ${cmd}`), '', '');
+            return { on: () => { } };
+        };
+
+        (execMock as any)[promisify.custom] = (cmd: string, options?: any) => new Promise((resolve, reject) => {
+            execMock(cmd, options, (error: Error | null, stdout: string, stderr: string) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve({ stdout, stderr });
+            });
+        });
+
+        const scanner = new CliAgentReviewScanner({
+            execFn: execMock as any,
+            backends: {
+                codex: { enabled: true, binaryPath: 'codex' },
+                gemini: { enabled: false },
+                opencode: { enabled: false },
+            },
+        });
+
+        const available = await scanner.isAvailable();
+        expect(available).toBe(true);
+    });
 });

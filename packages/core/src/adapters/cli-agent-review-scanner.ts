@@ -23,6 +23,11 @@ interface ExecLikeError {
     message?: string;
 }
 
+interface BackendExecutionOptions {
+    isReadinessProbe?: boolean;
+    expectsJsonObject?: boolean;
+}
+
 interface BackendReadinessState {
     ready: boolean;
     diagnostics?: {
@@ -383,7 +388,10 @@ export class CliAgentReviewScanner implements SecurityScanner {
         switch (backend.id) {
             case 'codex':
             case 'opencode':
-                return this.runBackend(backend, prompt, cwd, true);
+                return this.runBackend(backend, prompt, cwd, {
+                    isReadinessProbe: true,
+                    expectsJsonObject: true,
+                });
             case 'gemini':
                 return this.runGeminiReadinessProbe(backend, cwd);
         }
@@ -412,41 +420,80 @@ export class CliAgentReviewScanner implements SecurityScanner {
         backend: { id: AgentBackendId; config: AgentBackendConfig },
         prompt: string,
         cwd: string,
-        isReadinessProbe = false,
+        options: BackendExecutionOptions = {},
     ): Promise<string> {
-        const quotedPrompt = JSON.stringify(prompt);
-        let command = '';
-
-        switch (backend.id) {
-            case 'codex':
-                command = `${backend.config.binaryPath} exec --sandbox read-only --skip-git-repo-check ${quotedPrompt}`;
-                break;
-            case 'gemini':
-                command = `${backend.config.binaryPath} --approval-mode plan --output-format json --prompt ${quotedPrompt}`;
-                break;
-            case 'opencode':
-                command = `${backend.config.binaryPath} run --print-logs --format json ${quotedPrompt}`;
-                break;
-        }
+        const command = this.buildBackendCommand(backend, prompt);
 
         try {
             const { stdout } = await this.execAsync(command, {
                 cwd,
                 maxBuffer: 20 * 1024 * 1024,
                 env: this.buildExecEnv(backend.id),
-                timeout: isReadinessProbe ? 15000 : undefined,
+                timeout: options.isReadinessProbe ? 15000 : undefined,
             });
-            return stdout;
+            return this.normalizeBackendOutput(backend.id, stdout, options);
         } catch (error) {
             const diagnostics = this.classifyBackendFailure(backend.id, error as ExecLikeError);
             logger.error('Agent backend execution failed', {
                 backend: backend.id,
-                isReadinessProbe,
+                isReadinessProbe: options.isReadinessProbe,
                 diagnostics,
                 error: toError(error),
             });
             throw error;
         }
+    }
+
+    private buildBackendCommand(
+        backend: { id: AgentBackendId; config: AgentBackendConfig },
+        prompt: string,
+    ): string {
+        const quotedPrompt = JSON.stringify(this.buildBackendPrompt(backend.id, prompt));
+
+        switch (backend.id) {
+            case 'codex': {
+                const modelFlag = backend.config.model ? ` --model ${JSON.stringify(backend.config.model)}` : '';
+                return `${backend.config.binaryPath} exec --sandbox read-only --skip-git-repo-check${modelFlag} ${quotedPrompt}`;
+            }
+            case 'gemini':
+                return `${backend.config.binaryPath} --approval-mode plan --output-format json --prompt ${quotedPrompt}`;
+            case 'opencode':
+                return `${backend.config.binaryPath} run --print-logs --format json ${quotedPrompt}`;
+        }
+    }
+
+    private buildBackendPrompt(backend: AgentBackendId, prompt: string): string {
+        if (backend === 'codex') {
+            return [
+                'You are BackBrain\'s security scanning agent.',
+                'Operate strictly in read-only mode.',
+                'Return only the requested JSON object.',
+                'Do not wrap JSON in markdown fences.',
+                prompt,
+            ].join('\n\n');
+        }
+
+        return prompt;
+    }
+
+    private normalizeBackendOutput(
+        backend: AgentBackendId,
+        output: string,
+        options: BackendExecutionOptions,
+    ): string {
+        const trimmed = output.trim();
+        if (!trimmed) {
+            return trimmed;
+        }
+
+        if (backend === 'codex' && options.expectsJsonObject) {
+            const jsonMatch = trimmed.match(/\{[\s\S]*\}$/);
+            if (jsonMatch) {
+                return jsonMatch[0];
+            }
+        }
+
+        return trimmed;
     }
 
     private extractJson(output: string): unknown {
