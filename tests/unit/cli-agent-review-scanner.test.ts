@@ -24,6 +24,11 @@ function createExecMock() {
             codexExecCount += 1;
 
             if (codexExecCount === 1) {
+                callback(null, JSON.stringify({ ready: true }), '');
+                return { on: () => { } };
+            }
+
+            if (codexExecCount === 2) {
                 callback(null, JSON.stringify({
                     repoSummary: 'Flask app with auth and persistence concerns',
                     specialists: [
@@ -40,7 +45,7 @@ function createExecMock() {
                 return { on: () => { } };
             }
 
-            if (codexExecCount === 2) {
+            if (codexExecCount === 3) {
                 callback(null, JSON.stringify({
                     findings: [
                         {
@@ -127,7 +132,7 @@ describe('CliAgentReviewScanner', () => {
         expect(result.issues[0]?.title).toBe('Missing authorization check');
         expect(result.issues[0]?.source).toContain('auth-flow-reviewer');
         expect(result.issues[0]?.confidence).toBe('medium');
-        expect(calls.filter(cmd => cmd.includes('codex exec')).length).toBe(3);
+        expect(calls.filter(cmd => cmd.includes('codex exec')).length).toBe(4);
     });
 
     it('should return no findings when no backends are available', async () => {
@@ -157,5 +162,47 @@ describe('CliAgentReviewScanner', () => {
 
         expect(result.issues).toEqual([]);
         expect(result.scannerInfo).toContain('no backends available');
+    });
+
+    it('should reject a backend that fails readiness probing', async () => {
+        const execMock = (cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
+
+            if (cmd === 'codex --version') {
+                callback(null, '1.0.0', '');
+                return { on: () => { } };
+            }
+
+            if (cmd.includes('codex exec')) {
+                callback(new Error('Opening authentication page in your browser'), '', 'Opening authentication page in your browser');
+                return { on: () => { } };
+            }
+
+            callback(new Error(`Unexpected command: ${cmd}`), '', '');
+            return { on: () => { } };
+        };
+        (execMock as any)[promisify.custom] = (cmd: string, options?: any) => new Promise((resolve, reject) => {
+            execMock(cmd, options, (error: Error | null, stdout: string, stderr: string) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve({ stdout, stderr });
+            });
+        });
+
+        const scanner = new CliAgentReviewScanner({
+            execFn: execMock as any,
+            backends: {
+                codex: { enabled: true, binaryPath: 'codex' },
+                gemini: { enabled: false },
+                opencode: { enabled: false },
+            },
+        });
+
+        const available = await scanner.isAvailable();
+        expect(available).toBe(false);
     });
 });

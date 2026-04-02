@@ -23,6 +23,14 @@ interface ExecLikeError {
     message?: string;
 }
 
+interface BackendReadinessState {
+    ready: boolean;
+    diagnostics?: {
+        category: 'auth' | 'network' | 'filesystem' | 'unknown';
+        hint: string;
+    };
+}
+
 export interface CliAgentReviewScannerOptions {
     execFn?: typeof exec;
     maxSpecialists?: number;
@@ -78,6 +86,7 @@ export class CliAgentReviewScanner implements SecurityScanner {
     private readonly execFn: typeof exec;
     private readonly maxSpecialists: number;
     private readonly backends: Record<AgentBackendId, AgentBackendConfig>;
+    private readonly readinessCache = new Map<AgentBackendId, BackendReadinessState>();
 
     constructor(options: CliAgentReviewScannerOptions = {}) {
         this.execFn = options.execFn || exec;
@@ -264,10 +273,14 @@ export class CliAgentReviewScanner implements SecurityScanner {
         const available: Array<{ id: AgentBackendId; config: AgentBackendConfig }> = [];
 
         for (const id of candidates) {
-            if (await this.checkBackendAvailable(id, this.backends[id])) {
+            const readiness = await this.checkBackendReady(id, this.backends[id]);
+            if (readiness.ready) {
                 available.push({ id, config: this.backends[id] });
             } else {
-                logger.warn('Agent review backend unavailable', { backend: id });
+                logger.warn('Agent review backend unavailable', {
+                    backend: id,
+                    diagnostics: readiness.diagnostics,
+                });
             }
         }
 
@@ -287,10 +300,85 @@ export class CliAgentReviewScanner implements SecurityScanner {
         }
     }
 
+    private async checkBackendReady(id: AgentBackendId, config: AgentBackendConfig): Promise<BackendReadinessState> {
+        if (this.readinessCache.has(id)) {
+            return this.readinessCache.get(id)!;
+        }
+
+        const versionOk = await this.checkBackendAvailable(id, config);
+        if (!versionOk) {
+            const state: BackendReadinessState = {
+                ready: false,
+                diagnostics: {
+                    category: 'unknown',
+                    hint: `${id} is not installed or is not runnable from PATH.`,
+                },
+            };
+            this.readinessCache.set(id, state);
+            return state;
+        }
+
+        try {
+            const probeOutput = await this.runBackendReadinessProbe({ id, config }, process.cwd());
+            const parsed = this.extractJson(probeOutput) as { ready?: boolean };
+            const ready = parsed.ready === true;
+            const state: BackendReadinessState = { ready };
+            this.readinessCache.set(id, state);
+            if (!ready) {
+                logger.warn('Agent review backend failed readiness probe', { backend: id });
+            }
+            return state;
+        } catch (error) {
+            const diagnostics = this.classifyBackendFailure(id, error as ExecLikeError);
+            logger.warn('Agent review backend failed readiness probe', {
+                backend: id,
+                diagnostics,
+            });
+            const state: BackendReadinessState = { ready: false, diagnostics };
+            this.readinessCache.set(id, state);
+            return state;
+        }
+    }
+
+    private async runBackendReadinessProbe(
+        backend: { id: AgentBackendId; config: AgentBackendConfig },
+        cwd: string,
+    ): Promise<string> {
+        const prompt = 'Return ONLY this exact JSON: {"ready":true}';
+
+        switch (backend.id) {
+            case 'codex':
+            case 'opencode':
+                return this.runBackend(backend, prompt, cwd, true);
+            case 'gemini':
+                return this.runGeminiReadinessProbe(backend, cwd);
+        }
+    }
+
+    private async runGeminiReadinessProbe(
+        backend: { id: AgentBackendId; config: AgentBackendConfig },
+        cwd: string,
+    ): Promise<string> {
+        const command = `${backend.config.binaryPath} --approval-mode plan --output-format json --prompt ${JSON.stringify('Return ONLY this exact JSON: {"ready":true}')}`;
+
+        try {
+            const { stdout } = await this.execAsync(command, {
+                cwd,
+                maxBuffer: 10 * 1024 * 1024,
+                env: this.buildExecEnv(backend.id),
+                timeout: 15000,
+            });
+            return stdout;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     private async runBackend(
         backend: { id: AgentBackendId; config: AgentBackendConfig },
         prompt: string,
-        cwd: string
+        cwd: string,
+        isReadinessProbe = false,
     ): Promise<string> {
         const quotedPrompt = JSON.stringify(prompt);
         let command = '';
@@ -312,12 +400,14 @@ export class CliAgentReviewScanner implements SecurityScanner {
                 cwd,
                 maxBuffer: 20 * 1024 * 1024,
                 env: this.buildExecEnv(backend.id),
+                timeout: isReadinessProbe ? 15000 : undefined,
             });
             return stdout;
         } catch (error) {
             const diagnostics = this.classifyBackendFailure(backend.id, error as ExecLikeError);
             logger.error('Agent backend execution failed', {
                 backend: backend.id,
+                isReadinessProbe,
                 diagnostics,
                 error: toError(error),
             });
