@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { createLogger, type SecurityService } from '@backbrain/core';
 import { type WebviewMessage, type IssueData, type FixData, type FixSessionData, toIssueData } from '../webview/messages';
 import { getFixHistoryService } from '../services/fix-history-service';
+import { getActiveProvider } from '../services/ai-adapter-factory';
 
 const logger = createLogger('SeverityPanel');
 
@@ -162,7 +163,11 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
 
             // 2. Prioritize Strict Order: Active File -> Other Open Files -> Rest of Workspace
             const activeEditor = vscode.window.activeTextEditor;
-            const activePath = (activeEditor && !activeEditor.document.isUntitled) ? activeEditor.document.uri.fsPath : null;
+            const activePath = (
+                activeEditor &&
+                !activeEditor.document.isUntitled &&
+                activeEditor.document.uri.scheme === 'file'
+            ) ? activeEditor.document.uri.fsPath : null;
 
             const openDocuments = vscode.workspace.textDocuments
                 .filter(doc => !doc.isUntitled && doc.uri.scheme === 'file' && doc.uri.fsPath !== activePath)
@@ -300,7 +305,46 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         };
 
         // Invoke the AI explain command
-        await vscode.commands.executeCommand('backbrain.explainIssue', issue);
+        this._postMessage({
+            type: 'explanationStarted',
+            issueId: issueData.id,
+            provider: getActiveProvider(),
+        });
+
+        await vscode.commands.executeCommand('backbrain.explainIssue', issue, {
+            renderInPanel: true,
+            useStreaming: true,
+            onStart: ({ provider }: { provider: string | null }) => {
+                this._postMessage({
+                    type: 'explanationStarted',
+                    issueId: issueData.id,
+                    provider,
+                });
+            },
+            onChunk: (chunk: string) => {
+                this._postMessage({
+                    type: 'explanationChunk',
+                    issueId: issueData.id,
+                    chunk,
+                });
+            },
+            onComplete: (content: string, { provider }: { provider: string | null }) => {
+                this._postMessage({
+                    type: 'explanationComplete',
+                    issueId: issueData.id,
+                    content,
+                    provider,
+                });
+            },
+            onError: (error: string, { provider }: { provider: string | null }) => {
+                this._postMessage({
+                    type: 'explanationError',
+                    issueId: issueData.id,
+                    error,
+                    provider,
+                });
+            },
+        });
     }
 
     /**
@@ -321,7 +365,7 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
         };
 
         // Invoke the AI suggest fix command
-        const fix = await vscode.commands.executeCommand<any>('backbrain.suggestFix', issue, { silent: true });
+        const fix = await vscode.commands.executeCommand<any>('backbrain.suggestFix', issue, { silent: false });
 
         if (fix) {
             this._postMessage({

@@ -16,6 +16,13 @@ provideVSCodeDesignSystem().register(vsCodeButton(), vsCodeProgressRing());
 
 const severityOrder = ['critical', 'high', 'medium', 'low', 'info'];
 
+type ExplanationState = {
+    content: string;
+    loading: boolean;
+    error: string | null;
+    provider: string | null;
+};
+
 const App: React.FC = () => {
     // Initialize state from VS Code persistence if available
     const initialState = vscode.getState() as { issues?: IssueData[] } | undefined;
@@ -25,6 +32,7 @@ const App: React.FC = () => {
     const [fixHistory, setFixHistory] = useState<FixSessionData[]>([]);
     const [activeFix, setActiveFix] = useState<{ issueId: string; fix: FixData } | null>(null);
     const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+    const [explanations, setExplanations] = useState<Record<string, ExplanationState>>({});
 
     // Persist issues whenever they change
     useEffect(() => {
@@ -63,6 +71,50 @@ const App: React.FC = () => {
                     break;
                 case 'fixSuggested':
                     setActiveFix({ issueId: message.issueId, fix: message.fix });
+                    break;
+                case 'explanationStarted':
+                    setExplanations(prev => ({
+                        ...prev,
+                        [message.issueId]: {
+                            content: '',
+                            loading: true,
+                            error: null,
+                            provider: message.provider ?? null,
+                        },
+                    }));
+                    break;
+                case 'explanationChunk':
+                    setExplanations(prev => ({
+                        ...prev,
+                        [message.issueId]: {
+                            content: (prev[message.issueId]?.content || '') + message.chunk,
+                            loading: true,
+                            error: null,
+                            provider: prev[message.issueId]?.provider ?? null,
+                        },
+                    }));
+                    break;
+                case 'explanationComplete':
+                    setExplanations(prev => ({
+                        ...prev,
+                        [message.issueId]: {
+                            content: message.content,
+                            loading: false,
+                            error: null,
+                            provider: message.provider ?? prev[message.issueId]?.provider ?? null,
+                        },
+                    }));
+                    break;
+                case 'explanationError':
+                    setExplanations(prev => ({
+                        ...prev,
+                        [message.issueId]: {
+                            content: prev[message.issueId]?.content || '',
+                            loading: false,
+                            error: message.error,
+                            provider: message.provider ?? prev[message.issueId]?.provider ?? null,
+                        },
+                    }));
                     break;
                 case 'fixHistory':
                     setFixHistory(message.sessions);
@@ -253,6 +305,7 @@ const App: React.FC = () => {
                     issues={issues}
                     loading={loading}
                     activeFix={activeFix}
+                    explanations={explanations}
                     onClearActiveFix={() => setActiveFix(null)}
                 />
 

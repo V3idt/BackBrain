@@ -218,15 +218,19 @@ async function executeWithFallback<T>(
     const keyService = getAIKeyService();
     const triedProviders: SupportedProvider[] = [];
     const maxRetries = 2;
+    let lastProvider: SupportedProvider | null = null;
+    let lastError: unknown = null;
 
     // Try with current cached adapter first
     if (cachedAdapter !== null && cachedProvider !== null) {
         const adapter = cachedAdapter;
         const provider = cachedProvider;
+        lastProvider = provider;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
                 return await operation(adapter);
             } catch (error) {
+                lastError = error;
                 if (attempt === maxRetries - 1) {
                     logger.warn(`${operationName} failed with ${provider} after ${maxRetries} attempts`, { error });
                     triedProviders.push(provider);
@@ -253,6 +257,7 @@ async function executeWithFallback<T>(
         if (!(await adapter.isAvailable())) continue;
 
         triedProviders.push(provider);
+        lastProvider = provider;
 
         try {
             const result = await operation(adapter);
@@ -262,8 +267,18 @@ async function executeWithFallback<T>(
             logger.info(`${operationName} succeeded with fallback provider: ${provider}`);
             return result;
         } catch (error) {
+            lastError = error;
             logger.warn(`${operationName} failed with ${provider}`, { error });
         }
+    }
+
+    if (lastError instanceof Error && lastProvider) {
+        try {
+            (lastError as Error & { provider?: string }).provider = lastProvider;
+        } catch {
+            // Ignore if the error object is not extensible.
+        }
+        throw lastError;
     }
 
     throw new Error(`${operationName} failed with all available providers: ${triedProviders.join(', ')}`);

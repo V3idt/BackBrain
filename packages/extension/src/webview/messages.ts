@@ -59,6 +59,10 @@ export type ExtensionMessage =
     | { type: 'scanComplete'; issues: IssueData[] }
     | { type: 'scanError'; error: string }
     | { type: 'issuesUpdated'; issues: IssueData[]; batchInfo?: { current: number; total: number } }
+    | { type: 'explanationStarted'; issueId: string; provider?: string | null }
+    | { type: 'explanationChunk'; issueId: string; chunk: string }
+    | { type: 'explanationComplete'; issueId: string; content: string; provider?: string | null }
+    | { type: 'explanationError'; issueId: string; error: string; provider?: string | null }
     // Phase 10: Fix messages
     | { type: 'fixApplied'; sessionId: string; summary: FixSummaryData }
     | { type: 'fixReverted'; sessionId: string }
@@ -107,6 +111,8 @@ export interface IssueData {
     column: number; // Normalized to always be a number
     snippet?: string;
     category: string;
+    source?: string;
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 /**
@@ -117,7 +123,7 @@ export interface IssueData {
 export function toIssueData(issue: CodeIssue): IssueData {
     const { location } = issue;
 
-    return {
+    const issueData: IssueData = {
         id: issue.id || 'unknown',
         title: issue.title || 'Untitled Issue',
         description: issue.description || '',
@@ -130,4 +136,13 @@ export function toIssueData(issue: CodeIssue): IssueData {
         // Note: snippet is not currently provided by the core CodeIssue type
         // but is reserved here for future implementation.
     };
+
+    if (issue.source !== undefined) {
+        issueData.source = issue.source;
+    }
+    if (issue.confidence !== undefined) {
+        issueData.confidence = issue.confidence;
+    }
+
+    return issueData;
 }

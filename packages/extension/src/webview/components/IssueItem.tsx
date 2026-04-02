@@ -7,10 +7,11 @@ import './IssueItem.css';
 interface IssueItemProps {
     issue: IssueData;
     activeFix: FixData | null;
+    explanation: { content: string; loading: boolean; error: string | null; provider: string | null } | null;
     onClearActiveFix: () => void;
 }
 
-export const IssueItem: React.FC<IssueItemProps> = ({ issue, activeFix, onClearActiveFix }) => {
+export const IssueItem: React.FC<IssueItemProps> = ({ issue, activeFix, explanation, onClearActiveFix }) => {
     const handleClick = () => {
         vscode.postMessage({
             type: 'navigateToIssue',
@@ -97,6 +98,13 @@ export const IssueItem: React.FC<IssueItemProps> = ({ issue, activeFix, onClearA
                 <span>{fileName}:{issue.line}</span>
             </div>
 
+            {(issue.source || issue.confidence) && (
+                <div className="issue-meta">
+                    {issue.source && <span className="issue-meta__badge">{issue.source}</span>}
+                    {issue.confidence && <span className="issue-meta__badge">confidence: {issue.confidence}</span>}
+                </div>
+            )}
+
             {/* Snippet (if available) */}
             {issue.snippet && (
                 <pre className="issue-snippet">
@@ -121,7 +129,26 @@ export const IssueItem: React.FC<IssueItemProps> = ({ issue, activeFix, onClearA
                     Suggest Fix
                 </button>
             </div>
+
+            {(explanation?.loading || explanation?.content || explanation?.error) && (
+                <div className="issue-explanation" onClick={(e) => e.stopPropagation()}>
+                    <div className="issue-explanation__header">
+                        <span>AI Explanation</span>
+                        {explanation?.provider && (
+                            <span className="issue-explanation__provider">{explanation.provider}</span>
+                        )}
+                    </div>
+                    {explanation?.loading && (
+                        <div className="issue-explanation__status">Generating explanation...</div>
+                    )}
+                    {explanation?.error && (
+                        <div className="issue-explanation__error">{explanation.error}</div>
+                    )}
+                    {explanation?.content && (
+                        <div className="issue-explanation__content">{explanation.content}</div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
-

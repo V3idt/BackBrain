@@ -81,6 +81,10 @@ export interface SecurityIssue {
     cweId?: string;
     /** OWASP category if applicable */
     owaspCategory?: string;
+    /** Source scanner or backend */
+    source?: string;
+    /** Confidence for heuristic or AI-generated findings */
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface SecurityFix {
@@ -105,15 +109,30 @@ export interface ScanResult {
     scannerInfo?: string;
 }
 
+export interface SecurityScanContext {
+    /** Root path for the scan, when known */
+    repositoryRoot?: string;
+    /** Findings produced by deterministic scanners */
+    deterministicIssues?: SecurityIssue[];
+    /** Changed files relative to the repository root */
+    changedFiles?: string[];
+}
+
 export interface SecurityScanner {
     /** Scanner name for identification */
     readonly name: string;
+
+    /** Scanner type for orchestration */
+    readonly scanKind?: 'deterministic' | 'agent';
 
     /** Scan a single file */
     scanFile(filePath: string, content: string): Promise<SecurityIssue[]>;
 
     /** Scan multiple files or a directory */
     scan(paths: string[]): Promise<ScanResult>;
+
+    /** Scan with richer context when orchestration provides it */
+    scanWithContext?(paths: string[], context: SecurityScanContext): Promise<ScanResult>;
 
     /** Check if scanner is available */
     isAvailable(): Promise<boolean>;

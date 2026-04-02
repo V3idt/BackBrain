@@ -20,11 +20,32 @@ import {
 const logger = createLogger('SuggestFixCommand');
 
 /**
+ * Build a proposed file content by applying the suggested fix near the issue location.
+ */
+function buildPatchedContent(originalContent: string, issue: SecurityIssue, fix: SecurityFix): string | null {
+    const target = fix.original || issue.snippet;
+    if (target) {
+        const exactIndex = originalContent.indexOf(target);
+        if (exactIndex >= 0) {
+            return originalContent.slice(0, exactIndex) + fix.replacement + originalContent.slice(exactIndex + target.length);
+        }
+    }
+
+    const lines = originalContent.split('\n');
+    const lineIndex = Math.max(0, issue.line - 1);
+    if (lineIndex < lines.length) {
+        lines[lineIndex] = fix.replacement;
+        return lines.join('\n');
+    }
+
+    return null;
+}
+
+/**
  * Show a diff preview of the suggested fix
  */
 async function showFixDiff(issue: SecurityIssue, fix: SecurityFix): Promise<boolean> {
     if (!fix.replacement || !issue.filePath) {
-        // Show fix as markdown if no replacement code
         const doc = await vscode.workspace.openTextDocument({
             content: `# AI Suggested Fix: ${issue.title}\n\n## Description\n${fix.description}\n\n## Suggestion\n\`\`\`\n${fix.replacement || 'No code replacement available'}\n\`\`\``,
             language: 'markdown',
@@ -36,7 +57,33 @@ async function showFixDiff(issue: SecurityIssue, fix: SecurityFix): Promise<bool
         return false;
     }
 
-    // Create a virtual document showing the diff
+    try {
+        const sourceUri = vscode.Uri.file(issue.filePath);
+        const sourceDoc = await vscode.workspace.openTextDocument(sourceUri);
+        const patchedContent = buildPatchedContent(sourceDoc.getText(), issue, fix);
+
+        if (!patchedContent) {
+            throw new Error('Unable to determine replacement range for diff preview');
+        }
+
+        const language = sourceDoc.languageId;
+        const previewDoc = await vscode.workspace.openTextDocument({
+            content: patchedContent,
+            language,
+        });
+
+        await vscode.commands.executeCommand(
+            'vscode.diff',
+            sourceUri,
+            previewDoc.uri,
+            `Suggested Fix: ${issue.title}`
+        );
+
+        return fix.autoFixable;
+    } catch (error) {
+        logger.warn('Falling back to markdown fix preview', { error, filePath: issue.filePath });
+    }
+
     const doc = await vscode.workspace.openTextDocument({
         content: `# AI Suggested Fix: ${issue.title}
 
@@ -150,7 +197,7 @@ export function registerSuggestFixCommand(context: vscode.ExtensionContext): vsc
                     return fix;
 
                 } catch (error) {
-                    const provider = getActiveProvider() || 'unknown';
+                    const provider = ((error as { provider?: string } | undefined)?.provider) || getActiveProvider() || 'unknown';
                     const errorDetail = extractErrorMessage(error);
                     logger.error('Failed to suggest fix', { error, provider });
 

@@ -1,5 +1,14 @@
 import * as vscode from 'vscode';
-import { createLogger, ProviderRegistry, SecurityService, DEFAULT_SCANNERS, SemgrepScanner, VibeCodeScanner } from '@backbrain/core';
+import {
+  createLogger,
+  ProviderRegistry,
+  SecurityService,
+  type SecurityScanner,
+  DEFAULT_SCANNERS,
+  SemgrepScanner,
+  VibeCodeScanner,
+  CliAgentReviewScanner,
+} from '@backbrain/core';
 import { registerCommands } from './commands';
 import { VSCodeFileSystem } from './adapters/vscode-filesystem';
 import { initVSCodeLogging } from './logger-vscode';
@@ -69,28 +78,51 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }
 
+    const config = vscode.workspace.getConfiguration('backbrain');
+    const aiReviewEnabled = config.get<boolean>('ai.agentReviewEnabled', false);
+    const enabledAgentBackends = config.get<string[]>('ai.agentBackends', ['codex', 'gemini', 'opencode']);
+    const maxAgentSpecialists = config.get<number>('ai.maxAgentSpecialists', 6);
+    logger.info('AI agent review configuration', {
+      enabled: aiReviewEnabled,
+      backends: enabledAgentBackends,
+      maxSpecialists: maxAgentSpecialists,
+    });
+
     // Register scanners automatically from core
     let registeredScannerCount = 0;
     let vibeScanner: VibeCodeScanner | undefined;
+    const scanners: SecurityScanner[] = DEFAULT_SCANNERS.map(entry => entry.scanner);
+
+    if (aiReviewEnabled) {
+      logger.info('Registering AI agent review scanner');
+      scanners.push(new CliAgentReviewScanner({
+        maxSpecialists: maxAgentSpecialists,
+        backends: {
+          codex: { enabled: enabledAgentBackends.includes('codex') },
+          gemini: { enabled: enabledAgentBackends.includes('gemini') },
+          opencode: { enabled: enabledAgentBackends.includes('opencode') },
+        },
+      }));
+    }
 
     try {
-      DEFAULT_SCANNERS.forEach(({ name, scanner }) => {
+      scanners.forEach((scanner) => {
         try {
           // Configure Semgrep scanner if path is available
-          if (name === 'semgrep' && semgrepPath && scanner instanceof SemgrepScanner) {
+          if (scanner instanceof SemgrepScanner && semgrepPath) {
             scanner.setBinaryPath(semgrepPath);
           }
 
           // Capture Vibe scanner for rule updates
-          if (name === 'vibe-code' && scanner instanceof VibeCodeScanner) {
+          if (scanner instanceof VibeCodeScanner) {
             vibeScanner = scanner;
           }
 
-          registry.register('scanner', name, scanner);
+          registry.register('scanner', scanner.name, scanner);
           registeredScannerCount++;
-          logger.debug(`Registered scanner: ${name}`);
+          logger.debug(`Registered scanner: ${scanner.name}`);
         } catch (err) {
-          logger.error(`Failed to register scanner: ${name}`, { error: err });
+          logger.error(`Failed to register scanner: ${scanner.name}`, { error: err });
         }
       });
 
@@ -138,7 +170,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     // Create security service
-    const scanners = DEFAULT_SCANNERS.map(s => s.scanner);
     const securityService = new SecurityService(scanners);
 
     // Track UI initialization success
@@ -181,7 +212,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     // 3. Register Scanning Triggers
-    const config = vscode.workspace.getConfiguration('backbrain');
     const autoScanEnabled = config.get<boolean>('autoScan', true);
     const scanOnSaveEnabled = config.get<boolean>('scanOnSave', true);
 

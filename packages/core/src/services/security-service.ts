@@ -1,5 +1,5 @@
 import { SEVERITY_ORDER } from '../ports';
-import type { SecurityScanner, SecurityIssue, Severity } from '../ports';
+import type { SecurityScanner, SecurityIssue, Severity, SecurityScanContext } from '../ports';
 import type { CodeIssue, CodeFix, CodeLocation, IssueCategory, IssueSeverity } from '../types';
 import { getLogger } from '../utils/logger';
 import { toError } from '../utils/result';
@@ -58,6 +58,12 @@ function toCodeIssue(issue: SecurityIssue): CodeIssue {
     if (fix !== undefined) {
         result.suggestedFix = fix;
     }
+    if (issue.source !== undefined) {
+        result.source = issue.source;
+    }
+    if (issue.confidence !== undefined) {
+        result.confidence = issue.confidence;
+    }
 
     return result;
 }
@@ -112,12 +118,15 @@ export async function runSecurityScan(
 
     logger.info(`Starting security scan with ${scanners.length} scanner(s)`, { paths });
 
-    // Run all scanners
+    const deterministicScanners = scanners.filter(scanner => scanner.scanKind !== 'agent');
+    const agentScanners = scanners.filter(scanner => scanner.scanKind === 'agent');
+
+    // Run deterministic scanners first
     const allIssues: SecurityIssue[] = [];
     const allFiles = new Set<string>();
     const usedScanners: string[] = [];
 
-    for (const scanner of scanners) {
+    for (const scanner of deterministicScanners) {
         try {
             logger.debug(`Running scanner: ${scanner.name}`);
             const result = await scanner.scan(paths);
@@ -129,6 +138,25 @@ export async function runSecurityScan(
             logger.debug(`Scanner ${scanner.name} found ${result.issues.length} issues`);
         } catch (error) {
             logger.error(`Scanner ${scanner.name} failed`, { error: toError(error) });
+        }
+    }
+
+    const agentContext: SecurityScanContext = {
+        deterministicIssues: [...allIssues],
+    };
+
+    for (const scanner of agentScanners) {
+        try {
+            logger.debug(`Running agent scanner: ${scanner.name}`);
+            const result = scanner.scanWithContext
+                ? await scanner.scanWithContext(paths, agentContext)
+                : await scanner.scan(paths);
+
+            allIssues.push(...result.issues);
+            result.scannedFiles.forEach(f => allFiles.add(f));
+            usedScanners.push(scanner.name);
+        } catch (error) {
+            logger.error(`Agent scanner ${scanner.name} failed`, { error: toError(error) });
         }
     }
 
@@ -186,17 +214,54 @@ export class SecurityService {
 
     async scanFile(filePath: string, content: string): Promise<SecurityScanResult> {
         const issues: CodeIssue[] = [];
+        const scannersUsed: string[] = [];
+        const deterministicIssues: SecurityIssue[] = [];
 
-        for (const scanner of this.scanners) {
-            const scannerIssues = await scanner.scanFile(filePath, content);
-            issues.push(...scannerIssues.map(toCodeIssue));
+        const deterministicScanners = this.scanners.filter(scanner => scanner.scanKind !== 'agent');
+        const agentScanners = this.scanners.filter(scanner => scanner.scanKind === 'agent');
+
+        for (const scanner of deterministicScanners) {
+            try {
+                const available = await scanner.isAvailable();
+                if (!available) {
+                    continue;
+                }
+
+                const scannerIssues = await scanner.scanFile(filePath, content);
+                issues.push(...scannerIssues.map(toCodeIssue));
+                deterministicIssues.push(...scannerIssues);
+                scannersUsed.push(scanner.name);
+            } catch {
+                continue;
+            }
+        }
+
+        const agentContext: SecurityScanContext = {
+            deterministicIssues,
+        };
+
+        for (const scanner of agentScanners) {
+            try {
+                const available = await scanner.isAvailable();
+                if (!available) {
+                    continue;
+                }
+
+                const result = scanner.scanWithContext
+                    ? await scanner.scanWithContext([filePath], agentContext)
+                    : await scanner.scan([filePath]);
+                issues.push(...result.issues.map(toCodeIssue));
+                scannersUsed.push(scanner.name);
+            } catch {
+                continue;
+            }
         }
 
         return {
             issues,
             scannedFiles: [filePath],
             scanDurationMs: 0,
-            scannersUsed: this.scanners.map(s => s.name),
+            scannersUsed,
         };
     }
 

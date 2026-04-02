@@ -7,6 +7,7 @@ interface IssueListProps {
     issues: IssueData[];
     loading?: boolean;
     activeFix: { issueId: string; fix: FixData } | null;
+    explanations: Record<string, { content: string; loading: boolean; error: string | null; provider: string | null }>;
     onClearActiveFix: () => void;
 }
 
@@ -20,7 +21,7 @@ const severityRank: Record<string, number> = {
     'info': 4,
 };
 
-export const IssueList: React.FC<IssueListProps> = ({ issues, loading, activeFix, onClearActiveFix }) => {
+export const IssueList: React.FC<IssueListProps> = ({ issues, loading, activeFix, explanations, onClearActiveFix }) => {
     const [sortMethod, setSortMethod] = useState<SortMethod>('severity');
 
     const sortedAndGroupedIssues = useMemo(() => {
@@ -114,6 +115,7 @@ export const IssueList: React.FC<IssueListProps> = ({ issues, loading, activeFix
                                 key={issue.id}
                                 issue={issue}
                                 activeFix={activeFix?.issueId === issue.id ? activeFix.fix : null}
+                                explanation={explanations[issue.id] ?? null}
                                 onClearActiveFix={onClearActiveFix}
                             />
                         ))}

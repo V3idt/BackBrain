@@ -24,6 +24,8 @@ export interface CodeIssue {
     severity: IssueSeverity;
     suggestedFix?: CodeFix;
     category: IssueCategory;
+    source?: string;
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 export type CodeIssueType =

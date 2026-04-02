@@ -19,6 +19,18 @@ import {
 
 const logger = createLogger('ExplainIssueCommand');
 
+interface ExplainIssueUiCallbacks {
+    onStart?: (info: { provider: string | null }) => void;
+    onChunk?: (chunk: string) => void;
+    onComplete?: (content: string, info: { provider: string | null }) => void;
+    onError?: (error: string, info: { provider: string | null }) => void;
+}
+
+interface ExplainIssueOptions extends ExplainIssueUiCallbacks {
+    useStreaming?: boolean;
+    renderInPanel?: boolean;
+}
+
 /**
  * State for the currently selected issue (set by Severity Panel)
  */
@@ -42,7 +54,7 @@ export function getCurrentIssue(): SecurityIssue | null {
  * Register the explainIssue command
  */
 export function registerExplainIssueCommand(context: vscode.ExtensionContext): vscode.Disposable {
-    return vscode.commands.registerCommand('backbrain.explainIssue', async (issueArg?: SecurityIssue) => {
+    return vscode.commands.registerCommand('backbrain.explainIssue', async (issueArg?: SecurityIssue, options?: ExplainIssueOptions) => {
         const issue = issueArg || currentIssue;
 
         if (!issue) {
@@ -89,12 +101,12 @@ export function registerExplainIssueCommand(context: vscode.ExtensionContext): v
         }
 
         // Check user preference for streaming
-        const useStreaming = context.globalState.get<boolean>('backbrain.ai.useStreaming', true);
+        const useStreaming = options?.useStreaming ?? context.globalState.get<boolean>('backbrain.ai.useStreaming', true);
 
         if (useStreaming) {
-            await explainWithStreaming(issue, codeContext);
+            await explainWithStreaming(issue, codeContext, options);
         } else {
-            await explainWithoutStreaming(issue, codeContext);
+            await explainWithoutStreaming(issue, codeContext, options);
         }
     });
 }
@@ -102,38 +114,47 @@ export function registerExplainIssueCommand(context: vscode.ExtensionContext): v
 /**
  * Explain issue with streaming response
  */
-async function explainWithStreaming(issue: SecurityIssue, codeContext?: string): Promise<void> {
-    // Create output channel for streaming
-    const outputChannel = vscode.window.createOutputChannel('BackBrain AI Explanation', 'markdown');
-    outputChannel.show(true);
-    outputChannel.appendLine(`# AI Explanation: ${issue.title}\n`);
-    outputChannel.appendLine('*Generating explanation...*\n');
-    outputChannel.appendLine('---\n');
+async function explainWithStreaming(issue: SecurityIssue, codeContext?: string, options?: ExplainIssueOptions): Promise<void> {
+    const renderInPanel = options?.renderInPanel === true;
+    const providerAtStart = getActiveProvider();
+    options?.onStart?.({ provider: providerAtStart });
+
+    let outputChannel: vscode.OutputChannel | undefined;
+    if (!renderInPanel) {
+        outputChannel = vscode.window.createOutputChannel('BackBrain AI Explanation', 'markdown');
+        outputChannel.show(true);
+        outputChannel.appendLine(`# AI Explanation: ${issue.title}\n`);
+        outputChannel.appendLine('*Generating explanation...*\n');
+        outputChannel.appendLine('---\n');
+    }
 
     try {
         let fullResponse = '';
         for await (const chunk of streamExplainIssue(issue, codeContext)) {
-            outputChannel.append(chunk);
+            outputChannel?.append(chunk);
+            options?.onChunk?.(chunk);
             fullResponse += chunk;
         }
 
         if (fullResponse.trim().length === 0) {
             const errorMsg = 'AI returned an empty explanation. This can happen if the provider (e.g., Google, OpenAI) is overloaded or if the API key is restricted. Please check your settings or try again.';
-            outputChannel.appendLine(`\n\n---\n**Notice:** ${errorMsg}`);
+            outputChannel?.appendLine(`\n\n---\n**Notice:** ${errorMsg}`);
             vscode.window.showWarningMessage(`BackBrain: ${errorMsg}`);
             logger.warn('Issue explained but response was empty', { ruleId: issue.ruleId });
+            options?.onError?.(errorMsg, { provider: getActiveProvider() });
         } else {
             logger.info('Issue explained successfully (streaming)', {
                 ruleId: issue.ruleId,
                 responseLength: fullResponse.length,
             });
+            options?.onComplete?.(fullResponse, { provider: getActiveProvider() });
         }
     } catch (error) {
-        const provider = getActiveProvider() || 'unknown';
+        const provider = ((error as { provider?: string } | undefined)?.provider) || getActiveProvider() || 'unknown';
         const errorDetail = extractErrorMessage(error);
         logger.error('Failed to explain issue (streaming)', { error, provider });
 
-        outputChannel.appendLine(`\n\n---\n**Error using ${provider}:** ${errorDetail}`);
+        outputChannel?.appendLine(`\n\n---\n**Error using ${provider}:** ${errorDetail}`);
 
         let toastMsg = `AI explanation failed (${provider}): ${errorDetail}`;
 
@@ -144,13 +165,15 @@ async function explainWithStreaming(issue: SecurityIssue, codeContext?: string):
         }
 
         vscode.window.showErrorMessage(toastMsg);
+        options?.onError?.(errorDetail, { provider });
     }
 }
 
 /**
  * Explain issue without streaming (shows in new document)
  */
-async function explainWithoutStreaming(issue: SecurityIssue, codeContext?: string): Promise<void> {
+async function explainWithoutStreaming(issue: SecurityIssue, codeContext?: string, options?: ExplainIssueOptions): Promise<void> {
+    const renderInPanel = options?.renderInPanel === true;
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -159,23 +182,26 @@ async function explainWithoutStreaming(issue: SecurityIssue, codeContext?: strin
         },
         async (progress) => {
             progress.report({ message: 'Generating explanation...' });
+            options?.onStart?.({ provider: getActiveProvider() });
 
             try {
                 const explanation = await explainIssueWithCache(issue, codeContext);
 
-                // Show explanation in a new document
-                const doc = await vscode.workspace.openTextDocument({
-                    content: `# AI Explanation: ${issue.title}\n\n${explanation}`,
-                    language: 'markdown',
-                });
-                await vscode.window.showTextDocument(doc, {
-                    preview: true,
-                    viewColumn: vscode.ViewColumn.Beside,
-                });
+                if (!renderInPanel) {
+                    const doc = await vscode.workspace.openTextDocument({
+                        content: `# AI Explanation: ${issue.title}\n\n${explanation}`,
+                        language: 'markdown',
+                    });
+                    await vscode.window.showTextDocument(doc, {
+                        preview: true,
+                        viewColumn: vscode.ViewColumn.Beside,
+                    });
+                }
 
                 logger.info('Issue explained successfully', { ruleId: issue.ruleId });
+                options?.onComplete?.(explanation, { provider: getActiveProvider() });
             } catch (error) {
-                const provider = getActiveProvider() || 'unknown';
+                const provider = ((error as { provider?: string } | undefined)?.provider) || getActiveProvider() || 'unknown';
                 const errorDetail = extractErrorMessage(error);
                 logger.error('Failed to explain issue', { error, provider });
 
@@ -188,6 +214,7 @@ async function explainWithoutStreaming(issue: SecurityIssue, codeContext?: strin
                 }
 
                 vscode.window.showErrorMessage(toastMsg);
+                options?.onError?.(errorDetail, { provider });
             }
         }
     );

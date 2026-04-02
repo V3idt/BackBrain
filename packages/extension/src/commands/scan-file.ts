@@ -21,6 +21,11 @@ export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri) {
     return;
   }
 
+  if (targetUri.scheme !== 'file') {
+    logger.debug('Skipping scan for non-file URI', { scheme: targetUri.scheme, uri: targetUri.toString() });
+    return;
+  }
+
   const filePath = targetUri.fsPath;
   logger.info('Scanning file', { filePath });
 
