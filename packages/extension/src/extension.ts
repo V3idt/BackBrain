@@ -24,6 +24,45 @@ import { initializeFixHistoryService } from './services/fix-history-service';
 
 const logger = createLogger('Extension');
 
+async function ensureOptionalScannerToolsInstalled(
+  cliInstaller: GitHubCliInstaller,
+  toolBinaryPaths: Partial<Record<'gitleaks' | 'trivy' | 'osv-scanner', string>>,
+  onToolReady: (toolId: 'gitleaks' | 'trivy' | 'osv-scanner', binaryPath: string) => void,
+): Promise<void> {
+  for (const toolId of ['gitleaks', 'trivy', 'osv-scanner'] as const) {
+    const isAvailable = await cliInstaller.isAvailable(toolId);
+    if (isAvailable) {
+      toolBinaryPaths[toolId] = cliInstaller.getBinaryPath(toolId);
+      onToolReady(toolId, toolBinaryPaths[toolId]!);
+      logger.info(`${cliInstaller.getDisplayName(toolId)} found`, { path: toolBinaryPaths[toolId] });
+      continue;
+    }
+
+    try {
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Installing ${cliInstaller.getDisplayName(toolId)}...`,
+        cancellable: false,
+      }, async () => {
+        toolBinaryPaths[toolId] = await cliInstaller.install(toolId);
+      });
+      onToolReady(toolId, toolBinaryPaths[toolId]!);
+      vscode.window.showInformationMessage(`${cliInstaller.getDisplayName(toolId)} installed successfully.`);
+    } catch (err) {
+      logger.warn(`Failed to install ${toolId}`, { error: err });
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      vscode.window.showWarningMessage(
+        `BackBrain: Failed to install ${cliInstaller.getDisplayName(toolId)}. ${errorMsg}`,
+        'Manual Install'
+      ).then(choice => {
+        if (choice === 'Manual Install') {
+          vscode.env.openExternal(vscode.Uri.parse(cliInstaller.getDocsUrl(toolId)));
+        }
+      });
+    }
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   // 1. Initialize VS Code specific logging immediately
   initVSCodeLogging(context);
@@ -84,36 +123,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     const toolBinaryPaths: Partial<Record<'gitleaks' | 'trivy' | 'osv-scanner', string>> = {};
-    for (const toolId of ['gitleaks', 'trivy', 'osv-scanner'] as const) {
-      const isAvailable = await cliInstaller.isAvailable(toolId);
-      if (isAvailable) {
-        toolBinaryPaths[toolId] = cliInstaller.getBinaryPath(toolId);
-        logger.info(`${cliInstaller.getDisplayName(toolId)} found`, { path: toolBinaryPaths[toolId] });
-        continue;
-      }
-
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: `Installing ${cliInstaller.getDisplayName(toolId)}...`,
-        cancellable: false,
-      }, async () => {
-        try {
-          toolBinaryPaths[toolId] = await cliInstaller.install(toolId);
-          vscode.window.showInformationMessage(`${cliInstaller.getDisplayName(toolId)} installed successfully.`);
-        } catch (err) {
-          logger.warn(`Failed to install ${toolId}`, { error: err });
-          const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-          vscode.window.showWarningMessage(
-            `BackBrain: Failed to install ${cliInstaller.getDisplayName(toolId)}. ${errorMsg}`,
-            'Manual Install'
-          ).then(choice => {
-            if (choice === 'Manual Install') {
-              vscode.env.openExternal(vscode.Uri.parse(cliInstaller.getDocsUrl(toolId)));
-            }
-          });
-        }
-      });
-    }
 
     const config = vscode.workspace.getConfiguration('backbrain');
     const aiReviewEnabled = config.get<boolean>('ai.agentReviewEnabled', false);
@@ -214,6 +223,26 @@ export async function activate(context: vscode.ExtensionContext) {
     } catch (err) {
       logger.error('Unexpected error during scanner registration', { error: err });
     }
+
+    const optionalToolInstallPromise = ensureOptionalScannerToolsInstalled(
+      cliInstaller,
+      toolBinaryPaths,
+      (toolId, binaryPath) => {
+        scanners.forEach((scanner) => {
+          if (toolId === 'gitleaks' && scanner instanceof GitleaksScanner) {
+            scanner.setBinaryPath(binaryPath);
+          }
+          if (toolId === 'trivy' && scanner instanceof TrivyScanner) {
+            scanner.setBinaryPath(binaryPath);
+          }
+          if (toolId === 'osv-scanner' && scanner instanceof OSVScanner) {
+            scanner.setBinaryPath(binaryPath);
+          }
+        });
+      },
+    ).catch((error) => {
+      logger.warn('Optional scanner installation flow failed', { error });
+    });
 
     // Load Vibe rules and setup watcher
     if (vibeScanner && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
@@ -361,6 +390,8 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     logger.info('BackBrain extension activated successfully');
+
+    void optionalToolInstallPromise;
   } catch (error) {
     logger.error('Critical failure during BackBrain activation', { error });
 
