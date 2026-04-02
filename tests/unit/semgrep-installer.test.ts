@@ -18,7 +18,10 @@ describe("SemgrepInstaller", () => {
         mockFs = {
             existsSync: mock((path: string) => false),
         };
-        mockExec = mock((cmd: string, callback: any) => {
+        mockExec = mock((cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
             callback(null, "success", "");
         });
 
@@ -34,7 +37,10 @@ describe("SemgrepInstaller", () => {
 
     it("should return true if semgrep is in global path", async () => {
         mockFs.existsSync.mockImplementation(() => false);
-        mockExec.mockImplementation((cmd: string, callback: any) => {
+        mockExec.mockImplementation((cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
             if (cmd === "semgrep --version") {
                 callback(null, "1.0.0", "");
             } else {
@@ -48,7 +54,10 @@ describe("SemgrepInstaller", () => {
 
     it("should return false if semgrep is missing", async () => {
         mockFs.existsSync.mockImplementation(() => false);
-        mockExec.mockImplementation((cmd: string, callback: any) => {
+        mockExec.mockImplementation((cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
             callback(new Error("not found"), "", "");
         });
 
@@ -58,7 +67,10 @@ describe("SemgrepInstaller", () => {
 
     it("should install semgrep in venv", async () => {
         const executedCommands: string[] = [];
-        mockExec.mockImplementation((cmd: string, callback: any) => {
+        mockExec.mockImplementation((cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
             executedCommands.push(cmd);
             // Mock Python version check
             if (cmd.includes('--version')) {
@@ -71,8 +83,8 @@ describe("SemgrepInstaller", () => {
         // Add mkdirSync mock
         mockFs.mkdirSync = mock(() => { });
 
-        // Simulate venv not existing
-        mockFs.existsSync.mockImplementation(() => false);
+        // Simulate venv initially missing, then the semgrep binary appearing after install
+        mockFs.existsSync.mockImplementation((target: string) => target.includes('/bin/semgrep'));
 
         await installer.install();
 
@@ -83,7 +95,10 @@ describe("SemgrepInstaller", () => {
 
     it("should skip venv creation if it exists", async () => {
         const executedCommands: string[] = [];
-        mockExec.mockImplementation((cmd: string, callback: any) => {
+        mockExec.mockImplementation((cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
             executedCommands.push(cmd);
             // Mock Python version check
             if (cmd.includes('--version')) {

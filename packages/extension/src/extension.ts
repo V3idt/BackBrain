@@ -6,6 +6,9 @@ import {
   type SecurityScanner,
   DEFAULT_SCANNERS,
   SemgrepScanner,
+  GitleaksScanner,
+  TrivyScanner,
+  OSVScanner,
   VibeCodeScanner,
   CliAgentReviewScanner,
 } from '@backbrain/core';
@@ -14,6 +17,7 @@ import { VSCodeFileSystem } from './adapters/vscode-filesystem';
 import { initVSCodeLogging } from './logger-vscode';
 import { SeverityPanelProvider } from './views/severity-panel-provider';
 import { SemgrepInstaller } from './utils/semgrep-installer';
+import { GitHubCliInstaller } from './utils/github-cli-installer';
 import { VibeRuleLoader } from './utils/vibe-rule-loader';
 import { initializeAIKeyService } from './services/ai-key-service';
 import { initializeFixHistoryService } from './services/fix-history-service';
@@ -31,6 +35,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const fileSystem = new VSCodeFileSystem();
     const registry = new ProviderRegistry();
     const installer = new SemgrepInstaller(context);
+    const cliInstaller = new GitHubCliInstaller();
 
     // Initialize AI Key Service (internal, for future flexibility)
     initializeAIKeyService(context);
@@ -76,6 +81,38 @@ export async function activate(context: vscode.ExtensionContext) {
       } else if (selection === 'Learn More') {
         vscode.env.openExternal(vscode.Uri.parse('https://semgrep.dev/docs/getting-started/'));
       }
+    }
+
+    const toolBinaryPaths: Partial<Record<'gitleaks' | 'trivy' | 'osv-scanner', string>> = {};
+    for (const toolId of ['gitleaks', 'trivy', 'osv-scanner'] as const) {
+      const isAvailable = await cliInstaller.isAvailable(toolId);
+      if (isAvailable) {
+        toolBinaryPaths[toolId] = cliInstaller.getBinaryPath(toolId);
+        logger.info(`${cliInstaller.getDisplayName(toolId)} found`, { path: toolBinaryPaths[toolId] });
+        continue;
+      }
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Installing ${cliInstaller.getDisplayName(toolId)}...`,
+        cancellable: false,
+      }, async () => {
+        try {
+          toolBinaryPaths[toolId] = await cliInstaller.install(toolId);
+          vscode.window.showInformationMessage(`${cliInstaller.getDisplayName(toolId)} installed successfully.`);
+        } catch (err) {
+          logger.warn(`Failed to install ${toolId}`, { error: err });
+          const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+          vscode.window.showWarningMessage(
+            `BackBrain: Failed to install ${cliInstaller.getDisplayName(toolId)}. ${errorMsg}`,
+            'Manual Install'
+          ).then(choice => {
+            if (choice === 'Manual Install') {
+              vscode.env.openExternal(vscode.Uri.parse(cliInstaller.getDocsUrl(toolId)));
+            }
+          });
+        }
+      });
     }
 
     const config = vscode.workspace.getConfiguration('backbrain');
@@ -134,6 +171,16 @@ export async function activate(context: vscode.ExtensionContext) {
           // Configure Semgrep scanner if path is available
           if (scanner instanceof SemgrepScanner && semgrepPath) {
             scanner.setBinaryPath(semgrepPath);
+          }
+
+          if (scanner instanceof GitleaksScanner && toolBinaryPaths['gitleaks']) {
+            scanner.setBinaryPath(toolBinaryPaths['gitleaks']);
+          }
+          if (scanner instanceof TrivyScanner && toolBinaryPaths['trivy']) {
+            scanner.setBinaryPath(toolBinaryPaths['trivy']);
+          }
+          if (scanner instanceof OSVScanner && toolBinaryPaths['osv-scanner']) {
+            scanner.setBinaryPath(toolBinaryPaths['osv-scanner']);
           }
 
           // Capture Vibe scanner for rule updates
