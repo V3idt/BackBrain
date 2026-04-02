@@ -113,6 +113,7 @@ export interface IssueData {
     category: string;
     source?: string;
     confidence?: 'high' | 'medium' | 'low';
+    sourceType?: 'deterministic' | 'agent';
 }
 
 /**
@@ -139,6 +140,7 @@ export function toIssueData(issue: CodeIssue): IssueData {
 
     if (issue.source !== undefined) {
         issueData.source = issue.source;
+        issueData.sourceType = issue.source.startsWith('agent-review:') ? 'agent' : 'deterministic';
     }
     if (issue.confidence !== undefined) {
         issueData.confidence = issue.confidence;

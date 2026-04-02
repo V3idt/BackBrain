@@ -100,6 +100,11 @@ export const IssueItem: React.FC<IssueItemProps> = ({ issue, activeFix, explanat
 
             {(issue.source || issue.confidence) && (
                 <div className="issue-meta">
+                    {issue.sourceType && (
+                        <span className={`issue-meta__badge issue-meta__badge--${issue.sourceType}`}>
+                            {issue.sourceType === 'agent' ? 'ai review' : 'deterministic'}
+                        </span>
+                    )}
                     {issue.source && <span className="issue-meta__badge">{issue.source}</span>}
                     {issue.confidence && <span className="issue-meta__badge">confidence: {issue.confidence}</span>}
                 </div>

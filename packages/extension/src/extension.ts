@@ -82,10 +82,22 @@ export async function activate(context: vscode.ExtensionContext) {
     const aiReviewEnabled = config.get<boolean>('ai.agentReviewEnabled', false);
     const enabledAgentBackends = config.get<string[]>('ai.agentBackends', ['codex', 'gemini', 'opencode']);
     const maxAgentSpecialists = config.get<number>('ai.maxAgentSpecialists', 6);
+    const agentSpecialistConcurrency = config.get<number>('ai.agentSpecialistConcurrency', 3);
+    const agentReviewScope = config.get<'workspace' | 'changed-files' | 'both'>('ai.agentReviewScope', 'both');
+    const agentBinaryPaths = {
+      codex: config.get<string>('ai.agentBinaryPathCodex', '').trim(),
+      gemini: config.get<string>('ai.agentBinaryPathGemini', '').trim(),
+      opencode: config.get<string>('ai.agentBinaryPathOpencode', '').trim(),
+    };
     logger.info('AI agent review configuration', {
       enabled: aiReviewEnabled,
       backends: enabledAgentBackends,
       maxSpecialists: maxAgentSpecialists,
+      specialistConcurrency: agentSpecialistConcurrency,
+      reviewScope: agentReviewScope,
+      binaryPathOverrides: Object.fromEntries(
+        Object.entries(agentBinaryPaths).map(([key, value]) => [key, Boolean(value)])
+      ),
     });
 
     // Register scanners automatically from core
@@ -97,10 +109,21 @@ export async function activate(context: vscode.ExtensionContext) {
       logger.info('Registering AI agent review scanner');
       scanners.push(new CliAgentReviewScanner({
         maxSpecialists: maxAgentSpecialists,
+        specialistConcurrency: agentSpecialistConcurrency,
+        reviewScope: agentReviewScope,
         backends: {
-          codex: { enabled: enabledAgentBackends.includes('codex') },
-          gemini: { enabled: enabledAgentBackends.includes('gemini') },
-          opencode: { enabled: enabledAgentBackends.includes('opencode') },
+          codex: {
+            enabled: enabledAgentBackends.includes('codex'),
+            ...(agentBinaryPaths.codex ? { binaryPath: agentBinaryPaths.codex } : {}),
+          },
+          gemini: {
+            enabled: enabledAgentBackends.includes('gemini'),
+            ...(agentBinaryPaths.gemini ? { binaryPath: agentBinaryPaths.gemini } : {}),
+          },
+          opencode: {
+            enabled: enabledAgentBackends.includes('opencode'),
+            ...(agentBinaryPaths.opencode ? { binaryPath: agentBinaryPaths.opencode } : {}),
+          },
         },
       }));
     }

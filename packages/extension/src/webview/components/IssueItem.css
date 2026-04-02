@@ -63,6 +63,16 @@
     padding: 2px var(--bb-spacing-sm);
 }
 
+.issue-meta__badge--agent {
+    color: var(--bb-color-link);
+    border-color: color-mix(in srgb, var(--bb-color-link) 40%, var(--bb-color-border));
+    background-color: color-mix(in srgb, var(--bb-color-link) 10%, var(--bb-color-background-secondary));
+}
+
+.issue-meta__badge--deterministic {
+    color: var(--bb-color-foreground);
+}
+
 .issue-snippet {
     margin-top: var(--bb-spacing-md);
     padding: var(--bb-spacing-sm) var(--bb-spacing-md);

@@ -21,6 +21,78 @@ export interface SecurityScanResult {
     scannersUsed: string[];
 }
 
+function normalizeText(value: string | undefined): string {
+    return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getIssueDedupKey(issue: SecurityIssue): string {
+    return [
+        issue.filePath,
+        issue.line,
+        issue.endLine || '',
+        normalizeText(issue.ruleId || issue.title),
+        normalizeText(issue.title),
+    ].join('|');
+}
+
+function mergeSecurityIssue(existing: SecurityIssue, incoming: SecurityIssue): SecurityIssue {
+    const sources = new Set(
+        [existing.source, incoming.source]
+            .flatMap(value => (value || '').split(','))
+            .map(value => value.trim())
+            .filter(Boolean)
+    );
+    const confidenceRank = { high: 3, medium: 2, low: 1 } as const;
+    const mergedConfidence = [existing.confidence, incoming.confidence]
+        .filter((value): value is NonNullable<SecurityIssue['confidence']> => value !== undefined)
+        .sort((left, right) => confidenceRank[right] - confidenceRank[left])[0];
+
+    const merged: SecurityIssue = {
+        ...existing,
+        description: existing.description.length >= incoming.description.length
+            ? existing.description
+            : incoming.description,
+    };
+
+    const mergedReferences = Array.from(new Set([...(existing.references || []), ...(incoming.references || [])]));
+    if (mergedReferences.length > 0) {
+        merged.references = mergedReferences;
+    }
+    const mergedSource = sources.size > 0 ? Array.from(sources).join(', ') : existing.source || incoming.source;
+    if (mergedSource) {
+        merged.source = mergedSource;
+    }
+    if (mergedConfidence) {
+        merged.confidence = mergedConfidence;
+    }
+    const mergedSnippet = existing.snippet || incoming.snippet;
+    if (mergedSnippet) {
+        merged.snippet = mergedSnippet;
+    }
+    const mergedSuggestedFix = existing.suggestedFix || incoming.suggestedFix;
+    if (mergedSuggestedFix) {
+        merged.suggestedFix = mergedSuggestedFix;
+    }
+
+    return merged;
+}
+
+function dedupeSecurityIssues(issues: SecurityIssue[]): SecurityIssue[] {
+    const deduped = new Map<string, SecurityIssue>();
+
+    for (const issue of issues) {
+        const key = getIssueDedupKey(issue);
+        const existing = deduped.get(key);
+        if (existing) {
+            deduped.set(key, mergeSecurityIssue(existing, issue));
+        } else {
+            deduped.set(key, issue);
+        }
+    }
+
+    return Array.from(deduped.values());
+}
+
 /**
  * Convert security issue to code issue
  */
@@ -66,6 +138,34 @@ function toCodeIssue(issue: SecurityIssue): CodeIssue {
     }
 
     return result;
+}
+
+async function runScannerSafely(
+    scanner: SecurityScanner,
+    paths: string[],
+    logger: ReturnType<typeof getLogger>,
+    context?: SecurityScanContext,
+): Promise<{ issues: SecurityIssue[]; scannedFiles: string[]; usedScanner?: string }> {
+    try {
+        logger.debug(`Running ${scanner.scanKind === 'agent' ? 'agent ' : ''}scanner: ${scanner.name}`);
+        const result = context && scanner.scanWithContext
+            ? await scanner.scanWithContext(paths, context)
+            : await scanner.scan(paths);
+        logger.debug(`Scanner ${scanner.name} found ${result.issues.length} issues`);
+        return {
+            issues: result.issues,
+            scannedFiles: result.scannedFiles,
+            usedScanner: scanner.name,
+        };
+    } catch (error) {
+        logger.error(`${scanner.scanKind === 'agent' ? 'Agent scanner' : 'Scanner'} ${scanner.name} failed`, {
+            error: toError(error),
+        });
+        return {
+            issues: [],
+            scannedFiles: [],
+        };
+    }
 }
 
 /**
@@ -126,44 +226,39 @@ export async function runSecurityScan(
     const allFiles = new Set<string>();
     const usedScanners: string[] = [];
 
-    for (const scanner of deterministicScanners) {
-        try {
-            logger.debug(`Running scanner: ${scanner.name}`);
-            const result = await scanner.scan(paths);
+    const deterministicResults = await Promise.all(
+        deterministicScanners.map(scanner => runScannerSafely(scanner, paths, logger))
+    );
 
-            allIssues.push(...result.issues);
-            result.scannedFiles.forEach(f => allFiles.add(f));
-            usedScanners.push(scanner.name);
-
-            logger.debug(`Scanner ${scanner.name} found ${result.issues.length} issues`);
-        } catch (error) {
-            logger.error(`Scanner ${scanner.name} failed`, { error: toError(error) });
+    for (const result of deterministicResults) {
+        allIssues.push(...result.issues);
+        result.scannedFiles.forEach(f => allFiles.add(f));
+        if (result.usedScanner) {
+            usedScanners.push(result.usedScanner);
         }
     }
 
+    const dedupedDeterministicIssues = dedupeSecurityIssues(allIssues);
+
     const agentContext: SecurityScanContext = {
-        deterministicIssues: [...allIssues],
+        deterministicIssues: dedupedDeterministicIssues,
     };
 
     for (const scanner of agentScanners) {
-        try {
-            logger.debug(`Running agent scanner: ${scanner.name}`);
-            const result = scanner.scanWithContext
-                ? await scanner.scanWithContext(paths, agentContext)
-                : await scanner.scan(paths);
-
-            allIssues.push(...result.issues);
-            result.scannedFiles.forEach(f => allFiles.add(f));
-            usedScanners.push(scanner.name);
-        } catch (error) {
-            logger.error(`Agent scanner ${scanner.name} failed`, { error: toError(error) });
+        const result = await runScannerSafely(scanner, paths, logger, agentContext);
+        allIssues.push(...result.issues);
+        result.scannedFiles.forEach(f => allFiles.add(f));
+        if (result.usedScanner) {
+            usedScanners.push(result.usedScanner);
         }
     }
 
+    const dedupedAllIssues = dedupeSecurityIssues(allIssues);
+
     // Filter by severity if specified
     const filteredIssues = options.minSeverity
-        ? filterBySeverity(allIssues, options.minSeverity)
-        : allIssues;
+        ? filterBySeverity(dedupedAllIssues, options.minSeverity)
+        : dedupedAllIssues;
 
     // Convert to CodeIssue type
     const codeIssues = filteredIssues.map(toCodeIssue);
@@ -220,24 +315,34 @@ export class SecurityService {
         const deterministicScanners = this.scanners.filter(scanner => scanner.scanKind !== 'agent');
         const agentScanners = this.scanners.filter(scanner => scanner.scanKind === 'agent');
 
-        for (const scanner of deterministicScanners) {
-            try {
-                const available = await scanner.isAvailable();
-                if (!available) {
-                    continue;
-                }
+        const deterministicResults = await Promise.all(
+            deterministicScanners.map(async (scanner) => {
+                try {
+                    const available = await scanner.isAvailable();
+                    if (!available) {
+                        return { scannerName: scanner.name, issues: [] as SecurityIssue[] };
+                    }
 
-                const scannerIssues = await scanner.scanFile(filePath, content);
-                issues.push(...scannerIssues.map(toCodeIssue));
-                deterministicIssues.push(...scannerIssues);
-                scannersUsed.push(scanner.name);
-            } catch {
-                continue;
+                    const scannerIssues = await scanner.scanFile(filePath, content);
+                    return { scannerName: scanner.name, issues: scannerIssues };
+                } catch {
+                    return { scannerName: scanner.name, issues: [] as SecurityIssue[] };
+                }
+            })
+        );
+
+        for (const result of deterministicResults) {
+            if (result.issues.length > 0) {
+                deterministicIssues.push(...result.issues);
+                scannersUsed.push(result.scannerName);
             }
         }
 
+        const dedupedDeterministicIssues = dedupeSecurityIssues(deterministicIssues);
+        issues.push(...dedupedDeterministicIssues.map(toCodeIssue));
+
         const agentContext: SecurityScanContext = {
-            deterministicIssues,
+            deterministicIssues: dedupedDeterministicIssues,
         };
 
         for (const scanner of agentScanners) {
@@ -250,15 +355,25 @@ export class SecurityService {
                 const result = scanner.scanWithContext
                     ? await scanner.scanWithContext([filePath], agentContext)
                     : await scanner.scan([filePath]);
-                issues.push(...result.issues.map(toCodeIssue));
+                issues.push(...dedupeSecurityIssues(result.issues).map(toCodeIssue));
                 scannersUsed.push(scanner.name);
             } catch {
                 continue;
             }
         }
 
+        const dedupedCodeIssues = Array.from(new Map(issues.map(issue => {
+            const key = [
+                issue.location.filePath,
+                issue.location.line,
+                issue.title.toLowerCase(),
+                issue.ruleId || '',
+            ].join('|');
+            return [key, issue] as const;
+        })).values());
+
         return {
-            issues,
+            issues: dedupedCodeIssues,
             scannedFiles: [filePath],
             scanDurationMs: 0,
             scannersUsed,

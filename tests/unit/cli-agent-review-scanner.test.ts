@@ -205,4 +205,131 @@ describe('CliAgentReviewScanner', () => {
         const available = await scanner.isAvailable();
         expect(available).toBe(false);
     });
+
+    it('should scope planner input to changed files when configured', async () => {
+        const { execMock, calls } = createExecMock();
+        const scanner = new CliAgentReviewScanner({
+            execFn: execMock as any,
+            reviewScope: 'changed-files',
+            backends: {
+                codex: { enabled: true, binaryPath: 'codex' },
+                gemini: { enabled: false },
+                opencode: { enabled: false },
+            },
+        });
+
+        await scanner.scanWithContext(['/repo/app.py', '/repo/other.py'], {
+            repositoryRoot: '/repo',
+            deterministicIssues: [],
+            changedFiles: ['changed.ts'],
+        });
+
+        const plannerCall = calls.find(cmd => cmd.includes('codex exec') && cmd.includes('Requested scan paths')) || '';
+        expect(plannerCall).toContain('/repo/changed.ts');
+        expect(plannerCall).not.toContain('/repo/other.py');
+    });
+
+    it('should respect specialist concurrency when running specialists', async () => {
+        const active = { count: 0, max: 0 };
+        let codexExecCount = 0;
+
+        const execMock = (cmd: string, options: any, callback: any) => {
+            if (typeof options === 'function') {
+                callback = options;
+            }
+
+            if (cmd === 'codex --version') {
+                callback(null, '1.0.0', '');
+                return { on: () => { } };
+            }
+
+            if (cmd.includes('codex exec')) {
+                codexExecCount += 1;
+
+                if (codexExecCount === 1) {
+                    callback(null, JSON.stringify({ ready: true }), '');
+                    return { on: () => { } };
+                }
+
+                if (codexExecCount === 2) {
+                    callback(null, JSON.stringify({
+                        repoSummary: 'repo',
+                        specialists: [
+                            { name: 'one', rationale: 'r1', focus: 'f1', paths: ['/repo/a.ts'], checks: ['c1'] },
+                            { name: 'two', rationale: 'r2', focus: 'f2', paths: ['/repo/b.ts'], checks: ['c2'] },
+                            { name: 'three', rationale: 'r3', focus: 'f3', paths: ['/repo/c.ts'], checks: ['c3'] },
+                        ],
+                    }), '');
+                    return { on: () => { } };
+                }
+
+                if (codexExecCount >= 3 && codexExecCount <= 5) {
+                    active.count += 1;
+                    active.max = Math.max(active.max, active.count);
+                    setTimeout(() => {
+                        active.count -= 1;
+                        callback(null, JSON.stringify({
+                            findings: [{
+                                title: `Issue ${codexExecCount}`,
+                                description: 'desc',
+                                severity: 'medium',
+                                confidence: 'medium',
+                                filePath: '/repo/a.ts',
+                                line: codexExecCount,
+                                evidence: 'evidence',
+                                remediation: 'fix',
+                            }],
+                        }), '');
+                    }, 10);
+                    return { on: () => { } };
+                }
+
+                callback(null, JSON.stringify({
+                    findings: [{
+                        title: 'Merged issue',
+                        description: 'desc',
+                        severity: 'medium',
+                        confidence: 'medium',
+                        filePath: '/repo/a.ts',
+                        line: 1,
+                        evidence: 'evidence',
+                        remediation: 'fix',
+                        sourceRoles: ['one', 'two', 'three'],
+                    }],
+                }), '');
+                return { on: () => { } };
+            }
+
+            callback(new Error(`Unexpected command: ${cmd}`), '', '');
+            return { on: () => { } };
+        };
+
+        (execMock as any)[promisify.custom] = (cmd: string, options?: any) => new Promise((resolve, reject) => {
+            execMock(cmd, options, (error: Error | null, stdout: string, stderr: string) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve({ stdout, stderr });
+            });
+        });
+
+        const scanner = new CliAgentReviewScanner({
+            execFn: execMock as any,
+            specialistConcurrency: 2,
+            backends: {
+                codex: { enabled: true, binaryPath: 'codex' },
+                gemini: { enabled: false },
+                opencode: { enabled: false },
+            },
+        });
+
+        await scanner.scanWithContext(['/repo/app.py'], {
+            repositoryRoot: '/repo',
+            deterministicIssues: [],
+            changedFiles: [],
+        });
+
+        expect(active.max).toBe(2);
+    });
 });

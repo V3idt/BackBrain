@@ -34,6 +34,8 @@ interface BackendReadinessState {
 export interface CliAgentReviewScannerOptions {
     execFn?: typeof exec;
     maxSpecialists?: number;
+    specialistConcurrency?: number;
+    reviewScope?: 'workspace' | 'changed-files' | 'both';
     backends?: Partial<Record<AgentBackendId, Partial<AgentBackendConfig>>>;
 }
 
@@ -85,12 +87,16 @@ export class CliAgentReviewScanner implements SecurityScanner {
     readonly scanKind = 'agent' as const;
     private readonly execFn: typeof exec;
     private readonly maxSpecialists: number;
+    private readonly specialistConcurrency: number;
+    private readonly reviewScope: 'workspace' | 'changed-files' | 'both';
     private readonly backends: Record<AgentBackendId, AgentBackendConfig>;
     private readonly readinessCache = new Map<AgentBackendId, BackendReadinessState>();
 
     constructor(options: CliAgentReviewScannerOptions = {}) {
         this.execFn = options.execFn || exec;
         this.maxSpecialists = Math.max(1, options.maxSpecialists ?? 6);
+        this.specialistConcurrency = Math.max(1, options.specialistConcurrency ?? 3);
+        this.reviewScope = options.reviewScope ?? 'both';
         this.backends = {
             codex: {
                 enabled: true,
@@ -151,18 +157,22 @@ export class CliAgentReviewScanner implements SecurityScanner {
 
         const repositoryRoot = context.repositoryRoot || this.detectRepositoryRoot(paths);
         const changedFiles = context.changedFiles || await this.detectChangedFiles(repositoryRoot);
+        const effectivePaths = this.getEffectiveScanPaths(paths, changedFiles, repositoryRoot);
         const deterministicIssues = context.deterministicIssues || [];
         logger.info('Starting agent review scan', {
             repositoryRoot,
             pathCount: paths.length,
+            effectivePathCount: effectivePaths.length,
             deterministicIssueCount: deterministicIssues.length,
             changedFileCount: changedFiles.length,
             availableBackends: availableBackends.map(item => item.id),
+            reviewScope: this.reviewScope,
+            specialistConcurrency: this.specialistConcurrency,
         });
 
         const plannerPrompt = this.buildPlannerPrompt({
             repositoryRoot,
-            paths,
+            paths: effectivePaths,
             deterministicIssues,
             changedFiles,
         });
@@ -182,8 +192,10 @@ export class CliAgentReviewScanner implements SecurityScanner {
         });
 
         const specialistResults = await Promise.all(
-            specialists.map((specialist, index) =>
-                this.runSpecialist(
+            await this.runWithConcurrency(
+                specialists,
+                this.specialistConcurrency,
+                (specialist, index) => this.runSpecialist(
                     specialist,
                     availableBackends[index % availableBackends.length]!,
                     {
@@ -229,6 +241,28 @@ export class CliAgentReviewScanner implements SecurityScanner {
             scanDurationMs: Date.now() - startTime,
             scannerInfo: `AI Agent Review (${availableBackends.map(b => b.id).join(', ')})`,
         };
+    }
+
+    private async runWithConcurrency<TInput, TOutput>(
+        items: TInput[],
+        concurrency: number,
+        worker: (item: TInput, index: number) => Promise<TOutput>,
+    ): Promise<TOutput[]> {
+        const results = new Array<TOutput>(items.length);
+        let nextIndex = 0;
+
+        const runWorker = async () => {
+            while (nextIndex < items.length) {
+                const currentIndex = nextIndex++;
+                results[currentIndex] = await worker(items[currentIndex]!, currentIndex);
+            }
+        };
+
+        await Promise.all(
+            Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker())
+        );
+
+        return results;
     }
 
     private async runSpecialist(
@@ -507,6 +541,22 @@ export class CliAgentReviewScanner implements SecurityScanner {
 
         const resolved = first.slice(0, commonLength).join(path.sep);
         return resolved || path.dirname(paths[0]!);
+    }
+
+    private getEffectiveScanPaths(paths: string[], changedFiles: string[], repositoryRoot: string): string[] {
+        const changedAbsolutePaths = changedFiles
+            .map(file => path.isAbsolute(file) ? file : path.join(repositoryRoot, file))
+            .filter(Boolean);
+
+        switch (this.reviewScope) {
+            case 'changed-files':
+                return changedAbsolutePaths.length > 0 ? changedAbsolutePaths : paths;
+            case 'both':
+                return Array.from(new Set([...paths, ...changedAbsolutePaths]));
+            case 'workspace':
+            default:
+                return paths;
+        }
     }
 
     private async detectChangedFiles(repositoryRoot: string): Promise<string[]> {

@@ -45,6 +45,48 @@ class DeterministicTestScanner implements SecurityScanner {
     }
 }
 
+class DuplicateDeterministicTestScanner implements SecurityScanner {
+    readonly name = 'det-duplicate-scanner';
+    readonly scanKind = 'deterministic' as const;
+
+    async scanFile(filePath: string): Promise<SecurityIssue[]> {
+        return [{
+            ruleId: 'det.issue',
+            title: 'Deterministic issue',
+            description: 'Found by duplicate deterministic scanner with more detail',
+            severity: 'high',
+            filePath,
+            line: 3,
+            source: 'det-duplicate-scanner',
+        }];
+    }
+
+    async scan(paths: string[]): Promise<ScanResult> {
+        return {
+            issues: [{
+                ruleId: 'det.issue',
+                title: 'Deterministic issue',
+                description: 'Found by duplicate deterministic scanner with more detail',
+                severity: 'high',
+                filePath: paths[0] || '/repo/app.ts',
+                line: 3,
+                source: 'det-duplicate-scanner',
+            }],
+            scannedFiles: paths,
+            scanDurationMs: 5,
+            scannerInfo: this.name,
+        };
+    }
+
+    async isAvailable(): Promise<boolean> {
+        return true;
+    }
+
+    getSupportedExtensions(): string[] {
+        return ['.ts'];
+    }
+}
+
 class AgentTestScanner implements SecurityScanner {
     readonly name = 'agent-test-scanner';
     readonly scanKind = 'agent' as const;
@@ -100,5 +142,20 @@ describe('SecurityService orchestration', () => {
         expect(agent.lastContext?.deterministicIssues?.length).toBe(1);
         expect(agent.lastContext?.deterministicIssues?.[0]?.ruleId).toBe('det.issue');
         expect(result.issues.some(issue => issue.source === 'agent-test-scanner')).toBe(true);
+    });
+
+    it('should dedupe duplicate deterministic findings before passing them to agent review', async () => {
+        const deterministic = new DeterministicTestScanner();
+        const duplicate = new DuplicateDeterministicTestScanner();
+        const agent = new AgentTestScanner();
+        const service = new SecurityService([deterministic, duplicate, agent]);
+
+        const result = await service.scan(['/repo/app.ts'], {
+            scanners: [deterministic.name, duplicate.name, agent.name],
+        });
+
+        expect(agent.lastContext?.deterministicIssues?.length).toBe(1);
+        expect(result.issues.filter(issue => issue.title === 'Deterministic issue').length).toBe(1);
+        expect(result.issues.length).toBe(2);
     });
 });
