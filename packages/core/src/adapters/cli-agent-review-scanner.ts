@@ -17,6 +17,12 @@ interface AgentBackendConfig {
     model?: string;
 }
 
+interface ExecLikeError {
+    stdout?: string;
+    stderr?: string;
+    message?: string;
+}
+
 export interface CliAgentReviewScannerOptions {
     execFn?: typeof exec;
     maxSpecialists?: number;
@@ -309,8 +315,10 @@ export class CliAgentReviewScanner implements SecurityScanner {
             });
             return stdout;
         } catch (error) {
+            const diagnostics = this.classifyBackendFailure(backend.id, error as ExecLikeError);
             logger.error('Agent backend execution failed', {
                 backend: backend.id,
+                diagnostics,
                 error: toError(error),
             });
             throw error;
@@ -345,8 +353,44 @@ export class CliAgentReviewScanner implements SecurityScanner {
         const env = { ...process.env };
         if (backend === 'opencode') {
             env.XDG_CACHE_HOME = env.XDG_CACHE_HOME || '/tmp/opencode-cache';
+            env.XDG_DATA_HOME = env.XDG_DATA_HOME || '/tmp/opencode-data';
+            env.XDG_CONFIG_HOME = env.XDG_CONFIG_HOME || '/tmp/opencode-config';
         }
         return env;
+    }
+
+    private classifyBackendFailure(backend: AgentBackendId, error: ExecLikeError): {
+        category: 'auth' | 'network' | 'filesystem' | 'unknown';
+        hint: string;
+    } {
+        const text = [error.message, error.stderr, error.stdout].filter(Boolean).join('\n');
+        const normalized = text.toLowerCase();
+
+        if (normalized.includes('authentication page') || normalized.includes('api key expired') || normalized.includes('api_key_invalid') || normalized.includes('insufficient credits')) {
+            return {
+                category: 'auth',
+                hint: `${backend} is installed but not authenticated or funded for headless review.`,
+            };
+        }
+
+        if (normalized.includes('dns error') || normalized.includes('operation not permitted') || normalized.includes('unable to connect') || normalized.includes('failed to fetch')) {
+            return {
+                category: 'network',
+                hint: `${backend} could not reach its backend service or model registry.`,
+            };
+        }
+
+        if (normalized.includes('read-only file system') || normalized.includes('unable to open database file') || normalized.includes('mkdir')) {
+            return {
+                category: 'filesystem',
+                hint: `${backend} could not initialize local runtime state. Check writable cache/data directories.`,
+            };
+        }
+
+        return {
+            category: 'unknown',
+            hint: `${backend} failed for an unclassified reason. Inspect stderr/stdout for details.`,
+        };
     }
 
     private detectRepositoryRoot(paths: string[]): string {
