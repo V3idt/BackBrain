@@ -80,7 +80,7 @@ export function registerApplyFixCommand(_context: vscode.ExtensionContext): vsco
 
             logger.info('Applying fix', { ruleId: issue.ruleId, file: issue.filePath });
 
-            await vscode.window.withProgress(
+            const result = await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'BackBrain',
@@ -128,34 +128,39 @@ export function registerApplyFixCommand(_context: vscode.ExtensionContext): vsco
                             // Record in history for revert
                             const historyService = getFixHistoryService();
                             await historyService.recordSession(sessionId, summary, [issue.filePath]);
-
-                            // Show success with revert option
-                            const result = await vscode.window.showInformationMessage(
-                                `✓ ${formatSummary(summary)}`,
-                                'Revert',
-                                'View File'
-                            );
-
-                            if (result === 'Revert') {
-                                await vscode.commands.executeCommand('backbrain.revertFix', sessionId);
-                            } else if (result === 'View File') {
-                                const doc = await vscode.workspace.openTextDocument(issue.filePath);
-                                await vscode.window.showTextDocument(doc);
-                            }
                         } else if (summary.failed > 0) {
                             const error = summary.fixes[0]?.error || 'Unknown error';
                             vscode.window.showErrorMessage(`Fix failed: ${error}`);
                         }
 
                         logger.info('Fix applied', { sessionId, summary: formatSummary(summary) });
+                        return { summary, sessionId };
                     } catch (error) {
                         logger.error('Failed to apply fix', { error });
                         vscode.window.showErrorMessage(
                             `Failed to apply fix: ${error instanceof Error ? error.message : 'Unknown error'}`
                         );
+                        return undefined;
                     }
                 }
             );
+
+            if (!result || result.summary.fixed <= 0) {
+                return;
+            }
+
+            const nextAction = await vscode.window.showInformationMessage(
+                `✓ ${formatSummary(result.summary)}`,
+                'Revert',
+                'View File'
+            );
+
+            if (nextAction === 'Revert') {
+                await vscode.commands.executeCommand('backbrain.revertFix', result.sessionId);
+            } else if (nextAction === 'View File') {
+                const doc = await vscode.workspace.openTextDocument(issue.filePath);
+                await vscode.window.showTextDocument(doc);
+            }
         }
     );
 }
