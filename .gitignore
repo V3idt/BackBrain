@@ -36,4 +36,5 @@ coverage/
 !docs/**/IMPLEMENTATION_PLANS.md
 !docs/**/ROADMAP.md
 !docs/**/SECURITY_WORK_HANDOFF.md
+!docs/**/rule.json
 
