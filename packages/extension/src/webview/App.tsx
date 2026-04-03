@@ -5,9 +5,8 @@ import {
     vsCodeProgressRing
 } from '@vscode/webview-ui-toolkit';
 import { vscode } from './messages';
-import type { IssueData, ExtensionMessage, FixSessionData, FixData } from './messages';
+import type { IssueData, ExtensionMessage, FixData } from './messages';
 import { IssueList } from './components/IssueList';
-import { FixHistory } from './components/FixHistory';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/theme.css';
 
@@ -29,7 +28,6 @@ const App: React.FC = () => {
     const [issues, setIssues] = useState<IssueData[]>(initialState?.issues || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [fixHistory, setFixHistory] = useState<FixSessionData[]>([]);
     const [activeFix, setActiveFix] = useState<{ issueId: string; fix: FixData } | null>(null);
     const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
     const [explanations, setExplanations] = useState<Record<string, ExplanationState>>({});
@@ -116,18 +114,11 @@ const App: React.FC = () => {
                         },
                     }));
                     break;
-                case 'fixHistory':
-                    setFixHistory(message.sessions);
-                    break;
                 case 'fixApplied':
-                    // Clear active fix and refresh history
                     setActiveFix(null);
-                    vscode.postMessage({ type: 'requestFixHistory' });
-                    // Also refresh scan to remove fixed issue
                     vscode.postMessage({ type: 'requestScan' });
                     break;
                 case 'fixReverted':
-                    vscode.postMessage({ type: 'requestFixHistory' });
                     vscode.postMessage({ type: 'requestScan' });
                     break;
             }
@@ -137,8 +128,6 @@ const App: React.FC = () => {
 
         // Signal that the webview is ready
         vscode.postMessage({ type: 'ready' });
-        // Request initial history
-        vscode.postMessage({ type: 'requestFixHistory' });
 
         return () => window.removeEventListener('message', handleMessage);
     }, []);
@@ -308,14 +297,6 @@ const App: React.FC = () => {
                     explanations={explanations}
                     onClearActiveFix={() => setActiveFix(null)}
                 />
-
-                {/* Fix History */}
-                <div style={{ marginTop: 'var(--bb-spacing-xl)' }}>
-                    <FixHistory
-                        sessions={fixHistory}
-                        onRevert={(sessionId) => vscode.postMessage({ type: 'revertFix', sessionId })}
-                    />
-                </div>
             </div>
         </ErrorBoundary>
     );

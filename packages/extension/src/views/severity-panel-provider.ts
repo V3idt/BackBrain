@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { createLogger, type SecurityService } from '@backbrain/core';
-import { type WebviewMessage, type IssueData, type FixData, type FixSessionData, toIssueData } from '../webview/messages';
-import { getFixHistoryService } from '../services/fix-history-service';
+import { type WebviewMessage, type IssueData, type FixData, toIssueData } from '../webview/messages';
 import { getActiveProvider } from '../services/ai-adapter-factory';
 
 const logger = createLogger('SeverityPanel');
@@ -123,10 +122,6 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
 
                 case 'batchFix':
                     await vscode.commands.executeCommand('backbrain.batchFix');
-                    break;
-
-                case 'requestFixHistory':
-                    this._sendFixHistory();
                     break;
 
                 case 'exportReport':
@@ -432,30 +427,6 @@ export class SeverityPanelProvider implements vscode.WebviewViewProvider {
     private async _handleRevertFix(sessionId: string): Promise<void> {
         logger.info('Reverting fix session', { sessionId });
         await vscode.commands.executeCommand('backbrain.revertFix', sessionId);
-    }
-
-    /**
-     * Send fix history to webview (Phase 10)
-     */
-    private _sendFixHistory(): void {
-        try {
-            const historyService = getFixHistoryService();
-            const sessions = historyService.getSessions();
-
-            const sessionData: FixSessionData[] = sessions.map(s => ({
-                sessionId: s.sessionId,
-                timestamp: s.timestamp,
-                fixed: s.summary.fixed,
-                failed: s.summary.failed,
-                files: s.files,
-                reverted: s.reverted,
-            }));
-
-            this._postMessage({ type: 'fixHistory', sessions: sessionData });
-        } catch (error) {
-            logger.error('Failed to get fix history', { error });
-            this._postMessage({ type: 'fixError', error: 'Failed to load fix history' });
-        }
     }
 
     /**
