@@ -16,8 +16,18 @@ import {
     getOrCreateAIAdapter,
     getActiveProvider,
 } from '../services/ai-adapter-factory';
+import { getFixPreviewProvider } from '../services/fix-preview-provider';
 
 const logger = createLogger('SuggestFixCommand');
+interface FixPreviewState {
+    issue: SecurityIssue;
+    fix: SecurityFix;
+    originalUri: vscode.Uri;
+    previewUri: vscode.Uri;
+    previewTitle: string;
+}
+
+const fixPreviewByFile = new Map<string, FixPreviewState>();
 
 /**
  * Build a proposed file content by applying the suggested fix near the issue location.
@@ -41,10 +51,48 @@ function buildPatchedContent(originalContent: string, issue: SecurityIssue, fix:
     return null;
 }
 
-/**
- * Show a diff preview of the suggested fix
- */
-async function showFixDiff(issue: SecurityIssue, fix: SecurityFix): Promise<boolean> {
+function isMatchingDiffTab(tab: vscode.Tab, preview: FixPreviewState): boolean {
+    const input = tab.input;
+    return input instanceof vscode.TabInputTextDiff
+        && input.original.toString() === preview.originalUri.toString()
+        && input.modified.toString() === preview.previewUri.toString();
+}
+
+function isMatchingPreviewTab(tab: vscode.Tab, preview: FixPreviewState): boolean {
+    const input = tab.input;
+    return input instanceof vscode.TabInputText
+        && input.uri.toString() === preview.previewUri.toString();
+}
+
+export function getFixPreview(filePath: string): FixPreviewState | undefined {
+    return fixPreviewByFile.get(filePath);
+}
+
+export async function clearFixPreview(filePath?: string): Promise<void> {
+    const previews = filePath
+        ? Array.from(fixPreviewByFile.entries()).filter(([trackedPath]) => trackedPath === filePath)
+        : Array.from(fixPreviewByFile.entries());
+
+    for (const [trackedPath, preview] of previews) {
+        const tabsToClose: vscode.Tab[] = [];
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                if (isMatchingDiffTab(tab, preview) || isMatchingPreviewTab(tab, preview)) {
+                    tabsToClose.push(tab);
+                }
+            }
+        }
+
+        if (tabsToClose.length > 0) {
+            await vscode.window.tabGroups.close(tabsToClose);
+        }
+
+        getFixPreviewProvider().delete(preview.previewUri);
+        fixPreviewByFile.delete(trackedPath);
+    }
+}
+
+async function showFixPreviewInFile(issue: SecurityIssue, fix: SecurityFix): Promise<boolean> {
     if (!fix.replacement || !issue.filePath) {
         const doc = await vscode.workspace.openTextDocument({
             content: `# AI Suggested Fix: ${issue.title}\n\n## Description\n${fix.description}\n\n## Suggestion\n\`\`\`\n${fix.replacement || 'No code replacement available'}\n\`\`\``,
@@ -66,17 +114,29 @@ async function showFixDiff(issue: SecurityIssue, fix: SecurityFix): Promise<bool
             throw new Error('Unable to determine replacement range for diff preview');
         }
 
-        const language = sourceDoc.languageId;
-        const previewDoc = await vscode.workspace.openTextDocument({
-            content: patchedContent,
-            language,
+        await clearFixPreview(issue.filePath);
+
+        const previewTitle = `BackBrain Fix Preview: ${issue.title}`;
+        const previewUri = getFixPreviewProvider().createUri(issue.filePath, previewTitle);
+        getFixPreviewProvider().setContent(previewUri, patchedContent);
+        const previewDoc = await vscode.workspace.openTextDocument(previewUri);
+        fixPreviewByFile.set(issue.filePath, {
+            issue,
+            fix,
+            originalUri: sourceUri,
+            previewUri: previewDoc.uri,
+            previewTitle,
         });
 
         await vscode.commands.executeCommand(
             'vscode.diff',
             sourceUri,
             previewDoc.uri,
-            `Suggested Fix: ${issue.title}`
+            previewTitle,
+            {
+                preview: true,
+                preserveFocus: false,
+            }
         );
 
         return fix.autoFixable;
@@ -117,7 +177,6 @@ To apply this fix:
 
     return fix.autoFixable;
 }
-
 /**
  * Register the suggestFix command
  */
@@ -186,7 +245,7 @@ export function registerSuggestFixCommand(context: vscode.ExtensionContext): vsc
 
                     // Show the diff preview only if not silent
                     if (!options?.silent) {
-                        await showFixDiff(issue, fix);
+                        await showFixPreviewInFile(issue, fix);
                     }
 
                     logger.info('Fix suggested successfully', {

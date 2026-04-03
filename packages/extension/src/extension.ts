@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   createLogger,
   ProviderRegistry,
+  providerRegistry,
   SecurityService,
   type SecurityScanner,
   DEFAULT_SCANNERS,
@@ -21,6 +22,7 @@ import { GitHubCliInstaller } from './utils/github-cli-installer';
 import { VibeRuleLoader } from './utils/vibe-rule-loader';
 import { initializeAIKeyService } from './services/ai-key-service';
 import { initializeFixHistoryService } from './services/fix-history-service';
+import { registerFixPreviewProvider } from './services/fix-preview-provider';
 
 const logger = createLogger('Extension');
 
@@ -73,6 +75,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // 2. Initialize independent components
     const fileSystem = new VSCodeFileSystem();
     const registry = new ProviderRegistry();
+    providerRegistry.registerFilesystem('vscode', fileSystem, true);
     const installer = new SemgrepInstaller(context);
     const cliInstaller = new GitHubCliInstaller();
 
@@ -81,6 +84,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Initialize Fix History Service (Phase 10)
     initializeFixHistoryService(context);
+    registerFixPreviewProvider(context);
 
     // Check Semgrep availability
     let semgrepPath = '';
