@@ -12,7 +12,11 @@ interface CommandContext {
   severityPanelProvider: SeverityPanelProvider;
 }
 
-export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri) {
+interface ScanFileOptions {
+  quiet?: boolean;
+}
+
+export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri, options: ScanFileOptions = {}) {
   // Use provided URI (explorer context) or fallback to active editor
   const targetUri = uri || vscode.window.activeTextEditor?.document.uri;
 
@@ -30,11 +34,7 @@ export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri) {
   logger.info('Scanning file', { filePath });
 
   try {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: "BackBrain: Scanning file...",
-      cancellable: false
-    }, async (_progress) => {
+    const runScan = async () => {
       const content = await ctx.fileSystem.readFile(filePath);
       const result = await ctx.securityService.scanFile(filePath, content);
 
@@ -45,17 +45,24 @@ export async function scanFileCommand(ctx: CommandContext, uri?: vscode.Uri) {
       const high = result.issues.filter((i: CodeIssue) => i.severity === 'high').length;
       const total = result.issues.length;
 
-      if (total === 0) {
-        vscode.window.showInformationMessage('BackBrain: No issues found');
-      } else {
-        // Less intrusive information message, focus the panel
+      if (!options.quiet && total > 0) {
         vscode.window.showInformationMessage(
           `BackBrain: Found ${total} issue(s) (${critical} critical, ${high} high). Details in Severity Panel.`
         );
       }
 
       logger.info('Scan complete', { total, critical, high });
-    });
+    };
+
+    if (options.quiet) {
+      await runScan();
+    } else {
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "BackBrain: Scanning file...",
+        cancellable: false
+      }, async () => runScan());
+    }
   } catch (error) {
     logger.error('Scan failed', { error });
     vscode.window.showErrorMessage(`BackBrain: Scan failed: ${error}`);

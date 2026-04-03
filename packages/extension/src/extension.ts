@@ -348,11 +348,11 @@ export async function activate(context: vscode.ExtensionContext) {
       if (delay > 0) {
         const timer = setTimeout(() => {
           debounceTimers.delete(filePath);
-          vscode.commands.executeCommand('backbrain.scanFile', document.uri);
+          vscode.commands.executeCommand('backbrain.scanFile', document.uri, { quiet: true });
         }, delay);
         debounceTimers.set(filePath, timer);
       } else {
-        vscode.commands.executeCommand('backbrain.scanFile', document.uri);
+        vscode.commands.executeCommand('backbrain.scanFile', document.uri, { quiet: true });
       }
     };
 

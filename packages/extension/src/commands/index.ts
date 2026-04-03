@@ -21,7 +21,7 @@ interface CommandContext {
 
 export function registerCommands(context: vscode.ExtensionContext, ctx: CommandContext) {
   context.subscriptions.push(
-    vscode.commands.registerCommand('backbrain.scanFile', (uri?: vscode.Uri) => scanFileCommand(ctx, uri)),
+    vscode.commands.registerCommand('backbrain.scanFile', (uri?: vscode.Uri, options?: { quiet?: boolean }) => scanFileCommand(ctx, uri, options)),
     vscode.commands.registerCommand('backbrain.scanWorkspace', () => scanWorkspaceCommand(ctx)),
     vscode.commands.registerCommand('backbrain.showSecurityPanel', () => showSecurityPanelCommand()),
     // AI-powered commands
